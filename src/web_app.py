@@ -12,7 +12,7 @@ from edgar import set_identity
 
 from edgar_filings import fetch_filing_detail, fetch_filings, fetch_sale_summary
 
-DEFAULT_IDENTITY = "askEd research rliu38@stevens.edu"
+DEFAULT_IDENTITY = "askEd research user@example.com"
 set_identity(os.environ.get("SEC_EDGAR_IDENTITY", DEFAULT_IDENTITY))
 
 app = Flask(__name__)

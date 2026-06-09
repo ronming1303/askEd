@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 from edgar import Company, Filing, find, set_identity
 
-DEFAULT_IDENTITY = "askEd research rliu38@stevens.edu"
+DEFAULT_IDENTITY = "askEd research user@example.com"
 
 # Standard SEC Form 8-K / 6-K item codes -> plain-language description.
 # (Public, fixed list defined by SEC regulation S-K Item 8.01 schedule —
