@@ -6,14 +6,16 @@ Then open http://127.0.0.1:5000
 """
 
 import os
+from pathlib import Path
 
+from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
 from edgar import set_identity
 
 from edgar_filings import fetch_filing_detail, fetch_filings, fetch_sale_summary
 
-DEFAULT_IDENTITY = "askEd research user@example.com"
-set_identity(os.environ.get("SEC_EDGAR_IDENTITY", DEFAULT_IDENTITY))
+load_dotenv(Path(__file__).parent.parent / ".env")
+set_identity(os.environ.get("SEC_EDGAR_IDENTITY", "askEd research user@example.com"))
 
 app = Flask(__name__)
 
