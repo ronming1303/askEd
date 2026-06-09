@@ -1,0 +1,591 @@
+* { box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, "Segoe UI", "PingFang SC", sans-serif;
+  margin: 0;
+  background: #0d0f15;
+  color: #e6e8ee;
+}
+
+header {
+  padding: 20px 28px 12px;
+  border-bottom: 1px solid #1c2029;
+}
+
+h1 {
+  font-size: 20px;
+  margin: 0 0 14px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+#search-form {
+  display: flex;
+  gap: 8px;
+}
+
+#search-form input[type="text"] {
+  flex: 1;
+  max-width: 260px;
+}
+
+#search-form input,
+#search-form button {
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid #2a2f3d;
+  background: #161922;
+  color: #e6e8ee;
+  font-size: 14px;
+}
+
+#search-form button {
+  background: #3b6ef0;
+  border-color: #3b6ef0;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+#search-form button:hover { background: #5582f5; }
+
+#status {
+  min-height: 18px;
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: #767e91;
+}
+
+.enrich-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px;
+  font-size: 12px;
+  color: #9aa3b5;
+}
+.enrich-dot {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #fcc419;
+}
+.enrich-status[data-state="loading"] .enrich-dot {
+  animation: enrich-pulse 0.9s ease-in-out infinite;
+}
+.enrich-status[data-state="done"] .enrich-dot {
+  background: #51cf66;
+  animation: none;
+}
+@keyframes enrich-pulse {
+  0%   { box-shadow: 0 0 0 0   rgba(252, 196, 25, 0.7); }
+  60%  { box-shadow: 0 0 0 7px rgba(252, 196, 25, 0);   }
+  100% { box-shadow: 0 0 0 0   rgba(252, 196, 25, 0);   }
+}
+
+main {
+  padding: 28px 28px 60px;
+  position: relative;
+  max-width: 880px;
+}
+
+.company-info {
+  font-size: 14px;
+  color: #b6bccb;
+}
+
+#tab-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #1c2030;
+  margin-bottom: 20px;
+}
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  background: #161a26;
+  border: 1px solid #2c3242;
+  border-radius: 6px;
+  color: #767e91;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+.tab:hover { background: #1e2334; color: #c4cad9; }
+.tab.active { background: #1e2334; color: #e6e8ee; border-color: #5582f5; }
+.tab-close {
+  font-size: 14px;
+  line-height: 1;
+  color: #3e4659;
+  transition: color 0.1s;
+}
+.tab:hover .tab-close, .tab.active .tab-close { color: #767e91; }
+.tab-close:hover { color: #e6e8ee !important; }
+
+.tab-pane { /* panes shown/hidden via the hidden attribute */ }
+
+.company-info {
+  margin-bottom: 20px;
+}
+
+.company-header {
+  font-size: 14px;
+  color: #b6bccb;
+  margin-bottom: 10px;
+}
+
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid #2c3242;
+  background: #161a26;
+  color: #c4cad9;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s, color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+.filter-pill:hover { border-color: #3e4659; color: #e6e8ee; }
+.filter-pill.off {
+  opacity: 0.35;
+  color: #5a6175;
+  border-color: #1e2230;
+  text-decoration: line-through;
+}
+.fp-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.entry.dimmed > .entry-row {
+  opacity: 0.15;
+  pointer-events: none;
+}
+.company-header b { color: #fff; font-size: 16px; font-weight: 600; }
+.company-header .meta { color: #767e91; }
+
+/* ---- Timeline: an ordered list of evenly-spaced event rows along a
+   single restrained spine, newest first. Real-world filing dates cluster
+   unevenly, so position is by sequence (not by literal date distance) —
+   that's what keeps every row legible and avoids overlap entirely. ---- */
+.timeline-wrapper {
+  padding: 4px 8px;
+}
+
+.timeline-inner {
+  position: relative;
+}
+
+.timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* Sits inside the scrolling content (not the scroll container) so it scrolls
+   in lockstep with the rows it connects — no scroll-position recalculation
+   needed, just redraw when row layout changes (expand/collapse, resize). */
+.link-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.link-path {
+  fill: none;
+  stroke: #ffd43b;
+  stroke-width: 2;
+  stroke-dasharray: 5 4;
+  opacity: 0.85;
+}
+.link-endpoint {
+  fill: #ffd43b;
+  opacity: 0.9;
+}
+
+.related-link {
+  cursor: pointer;
+  color: #ffd43b;
+}
+.related-link:hover { text-decoration: underline; }
+.related-link.muted {
+  cursor: default;
+  color: #5a6175;
+}
+.related-link.muted:hover { text-decoration: none; }
+.related-link .link-icon { display: inline-block; transform: rotate(45deg); }
+.related-link .related-hint {
+  color: #767e91;
+  font-size: 12px;
+}
+
+@keyframes link-pulse {
+  0%, 100% { box-shadow: none; }
+  35% { box-shadow: 0 0 0 3px rgba(255, 212, 59, 0.45); }
+}
+.entry.pulse .entry-card {
+  animation: link-pulse 1.2s ease;
+}
+
+.entry {
+  position: relative;
+}
+
+/* One continuous spine per row; consecutive rows' lines join into a
+   single unbroken line, and it keeps running through an expanded
+   row's detail panel rather than breaking around it. */
+.entry::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 100px;
+  width: 1px;
+  background: #232733;
+}
+.entry:first-child::before { top: 18px; }
+.entry:last-child::before { bottom: calc(100% - 18px); }
+
+.entry-row {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 14px;
+}
+
+.entry-date {
+  flex: 0 0 78px;
+  padding-top: 13px;
+  text-align: right;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: #767e91;
+}
+
+.entry-spine {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 16px;
+  display: flex;
+  justify-content: center;
+}
+
+.marker {
+  align-self: flex-start;
+  margin-top: 12px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px #0d0f15;
+  transition: transform 0.15s ease;
+}
+
+.entry:hover .marker,
+.entry.expanded .marker {
+  transform: scale(1.6);
+}
+
+.entry-card {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 3px 0;
+  padding: 9px 14px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.entry:hover .entry-card,
+.entry.expanded .entry-card {
+  background: #161922;
+  border-color: #262b39;
+}
+
+/* ---- Expanding panel: clicking a row reveals its details (accession
+   number, document links, and — once fetched — insider/event detail)
+   directly underneath, in line with the timeline. The grid 0fr->1fr
+   trick animates smoothly to the content's natural height, which here
+   varies a lot (a one-line note vs. a trades table or press excerpt). */
+.entry-details {
+  display: grid;
+  grid-template-rows: 0fr;
+  margin-left: 122px;
+  transition: grid-template-rows 0.2s ease;
+}
+.entry.expanded .entry-details {
+  grid-template-rows: 1fr;
+}
+
+.entry-details-clip {
+  overflow: hidden;
+  min-height: 0;
+}
+
+.entry-details-inner {
+  padding: 2px 14px 16px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #b6bccb;
+}
+
+.entry-details .field {
+  display: inline-block;
+  width: 136px;
+  white-space: nowrap;
+  color: #767e91;
+}
+
+.entry-details a { color: #6f9bff; text-decoration: none; }
+.entry-details a:hover { text-decoration: underline; }
+
+.extra-title {
+  margin-top: 14px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: #5a6175;
+}
+
+.extra-line { margin-top: 4px; }
+.extra-line.muted, .extra-loading { color: #5a6175; font-style: italic; }
+
+/* ---- Financial statement tabs (10-K / 10-Q detail panel) ---- */
+.fin-stmts { margin-top: 12px; }
+
+.fin-tabbar {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+.fin-tab {
+  padding: 4px 12px;
+  border-radius: 6px;
+  border: 1px solid #2c3242;
+  background: #161a26;
+  color: #767e91;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+.fin-tab:hover { color: #c4cad9; border-color: #3e4659; }
+.fin-tab.active { background: #1e2334; color: #e6e8ee; border-color: #5582f5; }
+
+.fin-pane { display: none; }
+.fin-pane.active { display: block; }
+
+.fin-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.fin-table {
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  width: 100%;
+}
+.fin-table th {
+  padding: 5px 14px 5px 0;
+  text-align: right;
+  font-size: 11px;
+  font-weight: 600;
+  color: #767e91;
+  border-bottom: 1px solid #1c2029;
+  white-space: nowrap;
+  min-width: 100px;
+}
+.fin-table th:first-child {
+  text-align: left;
+  width: 40%;
+  min-width: 160px;
+}
+.fin-table td {
+  padding: 3px 14px 3px 0;
+  border-bottom: 1px solid #131720;
+  color: #c4cad9;
+  min-width: 100px;
+}
+.fin-label {
+  color: #9aa3b5;
+  text-align: left;
+  width: 40%;
+  min-width: 160px;
+}
+.fin-val { text-align: right; white-space: nowrap; }
+.fin-table tr.fin-sub .fin-label {
+  padding-left: 14px;
+  color: #767e91;
+  font-size: 11px;
+}
+
+.trades {
+  margin-top: 6px;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.trades th, .trades td {
+  padding: 4px 14px 4px 0;
+  text-align: left;
+  border-bottom: 1px solid #1c2029;
+  color: #c4cad9;
+  white-space: nowrap;
+}
+.trades th {
+  color: #767e91;
+  font-weight: 600;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.items {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  color: #c4cad9;
+}
+.items li { margin-bottom: 2px; }
+.items b { color: #e6e8ee; }
+
+.excerpt {
+  margin: 4px 0 0;
+  color: #9aa3b5;
+  white-space: pre-line;
+}
+
+.hld-table { margin-top: 8px; }
+.hld-row {
+  display: grid;
+  grid-template-columns: 48px 1fr auto auto;
+  align-items: baseline;
+  gap: 0 12px;
+  padding: 5px 0;
+  border-top: 1px solid #1c2030;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.hld-ticker { font-weight: 700; color: #4dabf7; font-size: 11px; }
+.hld-name { color: #c4cad9; }
+.hld-shares { font-size: 11px; }
+.hld-value { text-align: right; color: #e6e8ee; white-space: nowrap; }
+
+.prs-facts { margin-top: 6px; }
+.prs-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 13px;
+  color: #c4cad9;
+}
+.prs-row .field {
+  flex: 0 0 160px;
+  color: #767e91;
+  font-size: 12px;
+}
+.prs-flag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #2c3242;
+  color: #9aa3b5;
+  margin-right: 4px;
+}
+
+.footnote-ref {
+  border-bottom: 1px dotted #5a6175;
+  cursor: help;
+}
+
+.footnotes {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  color: #9aa3b5;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.footnotes li { margin-bottom: 6px; }
+.footnotes b { color: #c4cad9; font-weight: 600; }
+
+.badge {
+  flex: 0 0 auto;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #0d0f15;
+  white-space: nowrap;
+}
+
+.entry-desc {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: #c4cad9;
+}
+
+.person-card-trigger {
+  border-bottom: 1px dotted #5a6175;
+  cursor: pointer;
+}
+.person-card-trigger:hover { color: #e6e8ee; }
+
+.person-card {
+  position: fixed;
+  z-index: 50;
+  width: 240px;
+  padding: 12px 14px;
+  background: #1b1f2b;
+  border: 1px solid #2c3242;
+  border-radius: 10px;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.5);
+  font-size: 12px;
+  line-height: 1.55;
+  color: #c4cad9;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+.person-card.visible { opacity: 1; transform: translateY(0); }
+.person-card .pc-name { font-size: 14px; font-weight: 700; color: #e6e8ee; }
+.person-card .pc-role { margin-top: 2px; color: #9aa3b5; }
+.person-card .pc-divider { height: 1px; margin: 9px 0; background: #2c3242; }
+.person-card .pc-line { margin-top: 3px; }
+
+.empty {
+  padding: 20px 0;
+  color: #767e91;
+  font-size: 13px;
+}
+

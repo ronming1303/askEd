@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>AskEd · SEC EDGAR Filing Timeline</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header>
+    <h1>AskEd · SEC EDGAR Filing Timeline</h1>
+    <form id="search-form">
+      <input id="ticker-input" type="text" placeholder="Enter a ticker, e.g. AAPL" autocomplete="off" required>
+      <input id="limit-input" type="number" min="5" max="200" value="40" title="Maximum number of filings to show">
+      <button type="submit">Search</button>
+      <span id="enrich-status" class="enrich-status" hidden>
+        <span class="enrich-dot"></span>
+        <span class="enrich-label"></span>
+      </span>
+    </form>
+    <p id="status"></p>
+  </header>
+
+  <main>
+    <nav id="tab-bar" hidden></nav>
+    <div id="tab-contents"></div>
+  </main>
+
+  <script src="{{ url_for('static', filename='timeline.js') }}"></script>
+</body>
+</html>
