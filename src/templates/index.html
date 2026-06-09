@@ -10,7 +10,7 @@
     <h1>AskEd · SEC EDGAR Filing Timeline</h1>
     <form id="search-form">
       <input id="ticker-input" type="text" placeholder="Enter a ticker, e.g. AAPL" autocomplete="off" required>
-      <input id="limit-input" type="number" min="5" max="200" value="40" title="Maximum number of filings to show">
+      <input id="days-input" type="number" min="1" max="3650" value="30" title="Days to look back"> <span class="days-label">days</span>
       <button type="submit">Search</button>
       <span id="enrich-status" class="enrich-status" hidden>
         <span class="enrich-dot"></span>

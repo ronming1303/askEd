@@ -283,16 +283,18 @@ def _enrich_prospectus_descriptions(paired: list[tuple[dict, Filing]]) -> None:
             rec["description"] = desc
 
 
-def fetch_filings(ticker: str, forms: list[str] | None = None, limit: int | None = None,
+def fetch_filings(ticker: str, forms: list[str] | None = None, days: int = 30,
                   newest_first: bool = True) -> dict:
     """Return the company's filings as structured, date-sorted records.
 
     Args:
         ticker: Stock ticker symbol, e.g. "AAPL".
         forms: Optional list of form types to filter on, e.g. ["10-K", "10-Q"].
-        limit: Optional cap on the number of filings returned.
+        days: How many calendar days back from today to include.
         newest_first: Sort order; True = most recent filing first.
     """
+    cutoff = (datetime.today() - timedelta(days=days)).strftime("%Y-%m-%d")
+
     company = Company(ticker)
     filings = company.get_filings(form=forms) if forms else company.get_filings()
     filings = list(filings)
@@ -316,8 +318,7 @@ def fetch_filings(ticker: str, forms: list[str] | None = None, limit: int | None
         for f in filings
     ]
     paired = sorted(zip(records, filings), key=lambda rf: rf[0]["filing_date"], reverse=newest_first)
-    if limit:
-        paired = paired[:limit]
+    paired = [(rec, f) for rec, f in paired if rec["filing_date"] >= cutoff]
 
     _enrich_sale_notice_descriptions(paired)
     _enrich_prospectus_descriptions(paired)

@@ -10,6 +10,8 @@ const CATEGORIES = [
 ];
 const OTHER = { label: "Other", short: "Other", color: "#868e96" };
 const OTHER_IDX = CATEGORIES.length; // sentinel index for OTHER category
+const NEWS_CAT = { label: "News article", short: "News", color: "#74c0fc" };
+const NEWS_IDX = CATEGORIES.length + 1; // sentinel index for news entries
 
 function categorize(form) {
   for (const cat of CATEGORIES) {
@@ -20,7 +22,7 @@ function categorize(form) {
 
 const form = document.getElementById("search-form");
 const tickerInput = document.getElementById("ticker-input");
-const limitInput = document.getElementById("limit-input");
+const daysInput = document.getElementById("days-input");
 const status = document.getElementById("status");
 const enrichStatus = document.getElementById("enrich-status");
 const enrichDot = enrichStatus.querySelector(".enrich-dot");
@@ -141,7 +143,7 @@ form.addEventListener("submit", (e) => {
   e.preventDefault();
   const ticker = tickerInput.value.trim().toUpperCase();
   if (!ticker) return;
-  loadTicker(ticker, limitInput.value || 40);
+  loadTicker(ticker, parseInt(daysInput.value) || 30);
 });
 
 window.addEventListener("resize", redrawLink);
@@ -155,7 +157,7 @@ tabContents.addEventListener("transitionend", (e) => {
   if (e.propertyName === "grid-template-rows") redrawLink();
 });
 
-async function loadTicker(ticker, limit) {
+async function loadTicker(ticker, days) {
   status.textContent = "";
   const tab = newTab(ticker);
   activateTab(tab.id);
@@ -164,11 +166,19 @@ async function loadTicker(ticker, limit) {
   tab.fetchingFilings = true;
   syncTabIndicator(tab);
   try {
-    const res = await fetch(`/api/filings?ticker=${encodeURIComponent(ticker)}&limit=${encodeURIComponent(limit)}`);
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Request failed");
+    const [filingsRes, newsRes] = await Promise.all([
+      fetch(`/api/filings?ticker=${encodeURIComponent(ticker)}&days=${encodeURIComponent(days)}`),
+      fetch(`/api/news?ticker=${encodeURIComponent(ticker)}&days=${encodeURIComponent(days)}`).catch(() => null),
+    ]);
+    const data = await filingsRes.json();
+    if (!filingsRes.ok) throw new Error(data.error || "Request failed");
+    let news = [];
+    if (newsRes && newsRes.ok) {
+      try { news = await newsRes.json(); } catch {}
+    }
+    tab.days = days;
     renderCompanyInfo(data, tab);
-    renderTimeline(data.filings, tab);
+    renderTimeline(data.filings, news, tab);
   } catch (err) {
     status.textContent = `Error: ${err.message}`;
     closeTab(tab.id);
@@ -180,80 +190,133 @@ async function loadTicker(ticker, limit) {
 }
 
 function renderCompanyInfo(data, tab) {
+  const range = tab.days === 1 ? "past 1 day" : `past ${tab.days} days`;
   tab.companyInfoEl.innerHTML =
-    `<b>${data.company}</b> <span class="meta">· ${data.ticker} · CIK ${data.cik} · ${data.filing_count} filings</span>`;
+    `<b>${data.company}</b> <span class="meta">· ${data.ticker} · CIK ${data.cik} · ${data.filing_count} filings · ${range}</span>`;
 }
 
-function renderTimeline(filings, tab) {
+function renderTimeline(filings, news, tab) {
   const timelineEl = tab.timelineEl;
   timelineEl.innerHTML = "";
   tab.expandedEntries = new Set();
   if (activeTabId === tab.id) expandedEntries = new Set();
 
-  if (!filings.length) {
+  const newsArr = news || [];
+
+  if (!filings.length && !newsArr.length) {
     timelineEl.innerHTML = `<li class="empty">No filings match these criteria.</li>`;
     return;
   }
 
-  // Newest first. Rows are evenly spaced by sequence rather than placed
-  // proportionally to real date gaps — filing dates cluster unevenly, and
-  // sequence-based spacing is what keeps every row legible with no overlap.
-  const sorted = [...filings].sort((a, b) => b.filing_date.localeCompare(a.filing_date));
+  // Merge filings and news articles then sort newest-first. Rows are evenly
+  // spaced by sequence rather than proportionally to real date gaps — filing
+  // dates cluster unevenly, and sequence-based spacing keeps every row legible.
+  const allItems = [
+    ...filings.map(f => ({ type: "filing", date: f.filing_date, data: f })),
+    ...newsArr.map(a => ({ type: "news", date: a.date, data: a })),
+  ].sort((a, b) => b.date.localeCompare(a.date));
 
-  const pairs = sorted.map((filing) => {
-    const cat = categorize(filing.form);
+  const pairs = [];
 
-    // Form 144 rows carry a "person_card" alongside their enriched
-    // description — see descriptionHtml/wirePersonCard for how the seller's
-    // name gets split out into a hover-triggering business-card popover.
-    const desc = filing.description || cat.label;
-    const card = filing.person_card;
-    const descHtml = descriptionHtml(desc, card);
+  for (const item of allItems) {
+    if (item.type === "filing") {
+      const filing = item.data;
+      const cat = categorize(filing.form);
 
-    const catIdx = CATEGORIES.indexOf(cat) === -1 ? OTHER_IDX : CATEGORIES.indexOf(cat);
+      // Form 144 rows carry a "person_card" alongside their enriched
+      // description — see descriptionHtml/wirePersonCard for how the seller's
+      // name gets split out into a hover-triggering business-card popover.
+      const desc = filing.description || cat.label;
+      const card = filing.person_card;
+      const descHtml = descriptionHtml(desc, card);
+      const catIdx = CATEGORIES.indexOf(cat) === -1 ? OTHER_IDX : CATEGORIES.indexOf(cat);
 
-    const entry = document.createElement("li");
-    entry.className = "entry";
-    entry.dataset.accession = filing.accession_number;
-    entry.dataset.catIdx = catIdx;
-    entry.innerHTML = `
-      <div class="entry-row">
-        <div class="entry-date">${filing.filing_date}</div>
-        <div class="entry-spine"><span class="marker" style="background:${cat.color}"></span></div>
-        <div class="entry-card">
-          <span class="badge" style="background:${cat.color}">${filing.form}</span>
-          <span class="entry-desc">${descHtml}</span>
-        </div>
-      </div>
-      <div class="entry-details">
-        <div class="entry-details-clip">
-          <div class="entry-details-inner">
-            <div><span class="field">Accession No.</span>${filing.accession_number}</div>
-            <div><span class="field">Primary document</span>${filing.primary_document || "—"}</div>
-            <div>
-              <span class="field">Links</span>
-              <a href="${filing.document_url}" target="_blank" rel="noopener">View document</a>
-              &nbsp;·&nbsp;
-              <a href="${filing.index_url}" target="_blank" rel="noopener">Filing index</a>
-            </div>
-            <div class="entry-extra"></div>
+      const entry = document.createElement("li");
+      entry.className = "entry";
+      entry.dataset.accession = filing.accession_number;
+      entry.dataset.catIdx = catIdx;
+      entry.innerHTML = `
+        <div class="entry-row">
+          <div class="entry-date">${filing.filing_date}</div>
+          <div class="entry-spine"><span class="marker" style="background:${cat.color}"></span></div>
+          <div class="entry-card">
+            <span class="badge" style="background:${cat.color}">${filing.form}</span>
+            <span class="entry-desc">${descHtml}</span>
           </div>
         </div>
-      </div>
-    `;
+        <div class="entry-details">
+          <div class="entry-details-clip">
+            <div class="entry-details-inner">
+              <div><span class="field">Accession No.</span>${filing.accession_number}</div>
+              <div><span class="field">Primary document</span>${filing.primary_document || "—"}</div>
+              <div>
+                <span class="field">Links</span>
+                <a href="${filing.document_url}" target="_blank" rel="noopener">View document</a>
+                &nbsp;·&nbsp;
+                <a href="${filing.index_url}" target="_blank" rel="noopener">Filing index</a>
+              </div>
+              <div class="entry-extra"></div>
+            </div>
+          </div>
+        </div>
+      `;
 
-    entry.querySelector(".entry-card").addEventListener("click", () => toggleExpand(entry, filing));
+      entry.querySelector(".entry-card").addEventListener("click", () => toggleExpand(entry, filing));
+      const trigger = entry.querySelector(".person-card-trigger");
+      if (trigger && card) wirePersonCard(trigger, card);
 
-    const trigger = entry.querySelector(".person-card-trigger");
-    if (trigger && card) wirePersonCard(trigger, card);
+      timelineEl.appendChild(entry);
+      pairs.push({ entry, filing });
+    } else {
+      const article = item.data;
+      const sentMap = { positive: "#51cf66", negative: "#ff6b6b", neutral: "#868e96" };
+      const sentColor = sentMap[article.sentiment] || "#868e96";
+      const sentLabel = article.sentiment
+        ? article.sentiment.charAt(0).toUpperCase() + article.sentiment.slice(1)
+        : null;
 
-    timelineEl.appendChild(entry);
-    return { entry, filing };
-  });
+      const entry = document.createElement("li");
+      entry.className = "entry";
+      entry.dataset.catIdx = NEWS_IDX;
+      entry.innerHTML = `
+        <div class="entry-row">
+          <div class="entry-date">${article.date}</div>
+          <div class="entry-spine"><span class="marker" style="background:${NEWS_CAT.color}"></span></div>
+          <div class="entry-card">
+            <span class="badge" style="background:${NEWS_CAT.color}">News</span>
+            <span class="entry-desc">${escapeHtml(article.title)}</span>
+            ${sentLabel ? `<span class="news-sent-inline" style="color:${sentColor}">${escapeHtml(sentLabel)}</span>` : ""}
+          </div>
+        </div>
+        <div class="entry-details">
+          <div class="entry-details-clip">
+            <div class="entry-details-inner">
+              <div class="news-meta">${escapeHtml(article.source)}${sentLabel ? ` · <span class="news-sentiment" style="color:${sentColor}">${escapeHtml(sentLabel)}</span>` : ""}</div>
+              ${article.description ? `<p class="news-body">${escapeHtml(article.description)}</p>` : ""}
+              <div style="margin-top:8px"><a href="${escapeAttr(article.url)}" target="_blank" rel="noopener">Read full article →</a></div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      entry.querySelector(".entry-card").addEventListener("click", () => {
+        if (expandedEntries.has(entry)) {
+          entry.classList.remove("expanded");
+          expandedEntries.delete(entry);
+        } else {
+          entry.classList.add("expanded");
+          expandedEntries.add(entry);
+        }
+      });
+
+      timelineEl.appendChild(entry);
+      pairs.push({ entry });
+    }
+  }
 
   tab.dimmedCategories = new Set();
   renderFilterBar(tab, pairs);
-  enrichSaleSummaries(pairs, tab);
+  enrichSaleSummaries(pairs.filter(p => p.filing), tab);
 }
 
 function renderFilterBar(tab, pairs) {
@@ -265,7 +328,11 @@ function renderFilterBar(tab, pairs) {
   bar.innerHTML = "";
   bar.hidden = false;
 
-  const allCats = [...CATEGORIES.map((c, i) => ({ ...c, idx: i })), { ...OTHER, idx: OTHER_IDX }];
+  const allCats = [
+    ...CATEGORIES.map((c, i) => ({ ...c, idx: i })),
+    { ...OTHER, idx: OTHER_IDX },
+    { ...NEWS_CAT, idx: NEWS_IDX },
+  ];
   for (const cat of allCats) {
     if (!present.has(cat.idx)) continue;
     const btn = document.createElement("button");

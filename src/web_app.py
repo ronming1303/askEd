@@ -8,6 +8,7 @@ Then open http://127.0.0.1:5000
 import os
 from pathlib import Path
 
+import requests as http_requests
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
 from edgar import set_identity
@@ -28,6 +29,7 @@ _detail_cache: dict[str, dict] = {}
 # 3/4/5 row with a "sold X sh. @ $Y" summary in the background after it first
 # renders — cache by accession so re-searching the same ticker doesn't refetch.
 _sale_summary_cache: dict[str, dict | None] = {}
+_news_cache: dict[str, list] = {}
 
 
 @app.get("/")
@@ -41,12 +43,12 @@ def api_filings():
     if not ticker:
         return jsonify({"error": "ticker is required"}), 400
 
-    limit = request.args.get("limit", default=40, type=int)
+    days = request.args.get("days", default=30, type=int)
     forms_param = request.args.get("forms", "").strip()
     forms = [f.strip() for f in forms_param.split(",") if f.strip()] or None
 
     try:
-        result = fetch_filings(ticker, forms=forms, limit=limit, newest_first=True)
+        result = fetch_filings(ticker, forms=forms, days=days, newest_first=True)
     except Exception as exc:
         return jsonify({"error": f"Could not fetch filings for '{ticker}': {exc}"}), 502
 
@@ -81,6 +83,50 @@ def api_sale_summary():
             return jsonify({"error": f"Could not fetch sale summary for '{accession}': {exc}"}), 502
 
     return jsonify(_sale_summary_cache[accession])
+
+
+@app.get("/api/news")
+def api_news():
+    ticker = request.args.get("ticker", "").strip().upper()
+    if not ticker:
+        return jsonify({"error": "ticker is required"}), 400
+
+    api_key = os.environ.get("POLYGON_API_KEY", "")
+    if not api_key:
+        return jsonify({"error": "POLYGON_API_KEY not configured"}), 503
+
+    from datetime import date, timedelta
+    days = request.args.get("days", default=30, type=int)
+    cutoff = (date.today() - timedelta(days=days)).isoformat()
+    cache_key = f"{ticker}:{days}"
+
+    if cache_key not in _news_cache:
+        try:
+            resp = http_requests.get(
+                "https://api.polygon.io/v2/reference/news",
+                params={
+                    "ticker": ticker, "limit": 1000, "order": "desc",
+                    "published_utc.gte": cutoff, "apiKey": api_key,
+                },
+                timeout=10,
+            )
+            resp.raise_for_status()
+            raw = resp.json().get("results", [])
+            _news_cache[cache_key] = [
+                {
+                    "date": item["published_utc"][:10],
+                    "title": item["title"],
+                    "description": item.get("description", ""),
+                    "url": item["article_url"],
+                    "source": item["publisher"]["name"],
+                    "sentiment": (item.get("insights") or [{}])[0].get("sentiment"),
+                }
+                for item in raw
+            ]
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 502
+
+    return jsonify(_news_cache[cache_key])
 
 
 if __name__ == "__main__":
