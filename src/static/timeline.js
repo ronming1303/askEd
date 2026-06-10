@@ -1085,3 +1085,7 @@ function escapeHtml(s) {
 function escapeAttr(s) {
   return String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
+
+// Preload a sample ticker on first visit so the page demonstrates itself
+// before a user types anything.
+loadTicker("AAPL", parseInt(daysInput.value) || 30);
