@@ -6,6 +6,7 @@ Then open http://127.0.0.1:5000
 """
 
 import os
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import requests as http_requests
@@ -13,7 +14,7 @@ from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
 from edgar import set_identity
 
-from edgar_filings import fetch_filing_detail, fetch_filings, fetch_sale_summary
+from edgar_filings import fetch_filing_detail, fetch_filings, fetch_latest_filing, fetch_sale_summary
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 set_identity(os.environ.get("SEC_EDGAR_IDENTITY", "askEd research user@example.com"))
@@ -30,6 +31,8 @@ _detail_cache: dict[str, dict] = {}
 # renders — cache by accession so re-searching the same ticker doesn't refetch.
 _sale_summary_cache: dict[str, dict | None] = {}
 _news_cache: dict[str, list] = {}
+_price_cache: dict[str, list] = {}
+_latest_filing_cache: dict[str, dict | None] = {}
 
 
 @app.get("/")
@@ -85,6 +88,27 @@ def api_sale_summary():
     return jsonify(_sale_summary_cache[accession])
 
 
+@app.get("/api/latest-filing")
+def api_latest_filing():
+    ticker = request.args.get("ticker", "").strip()
+    if not ticker:
+        return jsonify({"error": "ticker is required"}), 400
+
+    form = request.args.get("form", "10-Q").strip()
+    cache_key = f"{ticker.upper()}:{form}"
+
+    if cache_key not in _latest_filing_cache:
+        try:
+            _latest_filing_cache[cache_key] = fetch_latest_filing(ticker, form=form)
+        except Exception as exc:
+            return jsonify({"error": f"Could not fetch latest {form} for '{ticker}': {exc}"}), 502
+
+    result = _latest_filing_cache[cache_key]
+    if result is None:
+        return jsonify({"error": f"No {form} filings found for '{ticker}'"}), 404
+    return jsonify(result)
+
+
 @app.get("/api/news")
 def api_news():
     ticker = request.args.get("ticker", "").strip().upper()
@@ -95,7 +119,6 @@ def api_news():
     if not api_key:
         return jsonify({"error": "POLYGON_API_KEY not configured"}), 503
 
-    from datetime import date, timedelta
     days = request.args.get("days", default=30, type=int)
     cutoff = (date.today() - timedelta(days=days)).isoformat()
     cache_key = f"{ticker}:{days}"
@@ -127,6 +150,47 @@ def api_news():
             return jsonify({"error": str(exc)}), 502
 
     return jsonify(_news_cache[cache_key])
+
+
+@app.get("/api/prices")
+def api_prices():
+    ticker = request.args.get("ticker", "").strip().upper()
+    if not ticker:
+        return jsonify({"error": "ticker is required"}), 400
+
+    api_key = os.environ.get("POLYGON_API_KEY", "")
+    if not api_key:
+        return jsonify({"error": "POLYGON_API_KEY not configured"}), 503
+
+    days = request.args.get("days", default=30, type=int)
+    to_date = date.today().isoformat()
+    from_date = (date.today() - timedelta(days=days)).isoformat()
+    cache_key = f"{ticker}:{days}"
+
+    if cache_key not in _price_cache:
+        try:
+            resp = http_requests.get(
+                f"https://api.polygon.io/v2/aggs/ticker/{ticker}/range/1/day/{from_date}/{to_date}",
+                params={"adjusted": "true", "sort": "asc", "apiKey": api_key},
+                timeout=10,
+            )
+            resp.raise_for_status()
+            raw = resp.json().get("results", [])
+            _price_cache[cache_key] = [
+                {
+                    "date": datetime.utcfromtimestamp(bar["t"] / 1000).strftime("%Y-%m-%d"),
+                    "open": bar["o"],
+                    "high": bar["h"],
+                    "low": bar["l"],
+                    "close": bar["c"],
+                    "volume": bar["v"],
+                }
+                for bar in raw
+            ]
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 502
+
+    return jsonify(_price_cache[cache_key])
 
 
 if __name__ == "__main__":

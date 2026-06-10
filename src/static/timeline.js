@@ -51,11 +51,39 @@ function newTab(ticker) {
       <div class="company-header"></div>
       <div class="filter-bar" hidden></div>
     </div>
-    <div class="timeline-wrapper">
-      <div class="timeline-inner">
-        <svg class="link-overlay"></svg>
-        <ol class="timeline"></ol>
+    <div class="pane-layout">
+      <div class="timeline-wrapper">
+        <div class="timeline-inner">
+          <svg class="link-overlay"></svg>
+          <ol class="timeline"></ol>
+        </div>
       </div>
+      <aside class="price-panel" hidden>
+        <div class="price-summary">
+          <span class="price-ticker"></span>
+          <span class="price-value"></span>
+          <span class="price-change"></span>
+          <span class="price-summary-date"></span>
+        </div>
+        <div class="price-ohlc price-ohlc-empty"></div>
+        <svg class="price-chart" viewBox="0 0 280 110" preserveAspectRatio="none">
+          <path class="price-area"></path>
+          <path class="price-line"></path>
+          <line class="price-hover-wick" hidden></line>
+          <rect class="price-hover-body" hidden></rect>
+        </svg>
+        <div class="price-date-range">
+          <span class="price-date-from"></span>
+          <span class="price-date-to"></span>
+        </div>
+        <div class="price-10q" hidden>
+          <div class="p10q-header">
+            <span class="p10q-label">Latest 10-Q</span>
+            <span class="p10q-date"></span>
+          </div>
+          <div class="p10q-extra"></div>
+        </div>
+      </aside>
     </div>
   `;
   tabContents.appendChild(pane);
@@ -67,6 +95,10 @@ function newTab(ticker) {
     filterBarEl:   pane.querySelector(".filter-bar"),
     timelineEl:    pane.querySelector(".timeline"),
     svgEl:         pane.querySelector(".link-overlay"),
+    pricePanelEl:  pane.querySelector(".price-panel"),
+    priceChartEl:  pane.querySelector(".price-chart"),
+    priceData: [],
+    priceChartGeom: null,
     expandedEntries: new Set(),
     dimmedCategories: new Set(),
     enrichState: { gen: 0, checked: 0, total: 0, done: false },
@@ -166,9 +198,11 @@ async function loadTicker(ticker, days) {
   tab.fetchingFilings = true;
   syncTabIndicator(tab);
   try {
-    const [filingsRes, newsRes] = await Promise.all([
+    const [filingsRes, newsRes, pricesRes, latest10QRes] = await Promise.all([
       fetch(`/api/filings?ticker=${encodeURIComponent(ticker)}&days=${encodeURIComponent(days)}`),
       fetch(`/api/news?ticker=${encodeURIComponent(ticker)}&days=${encodeURIComponent(days)}`).catch(() => null),
+      fetch(`/api/prices?ticker=${encodeURIComponent(ticker)}&days=${encodeURIComponent(days)}`).catch(() => null),
+      fetch(`/api/latest-filing?ticker=${encodeURIComponent(ticker)}&form=10-Q`).catch(() => null),
     ]);
     const data = await filingsRes.json();
     if (!filingsRes.ok) throw new Error(data.error || "Request failed");
@@ -176,9 +210,20 @@ async function loadTicker(ticker, days) {
     if (newsRes && newsRes.ok) {
       try { news = await newsRes.json(); } catch {}
     }
+    let prices = [];
+    if (pricesRes && pricesRes.ok) {
+      try { prices = await pricesRes.json(); } catch {}
+    }
+    let latest10Q = null;
+    if (latest10QRes && latest10QRes.ok) {
+      try { latest10Q = await latest10QRes.json(); } catch {}
+    }
     tab.days = days;
+    tab.priceData = Array.isArray(prices) ? prices : [];
     renderCompanyInfo(data, tab);
     renderTimeline(data.filings, news, tab);
+    renderPriceChart(tab);
+    renderLatest10Q(tab, latest10Q);
   } catch (err) {
     status.textContent = `Error: ${err.message}`;
     closeTab(tab.id);
@@ -264,6 +309,8 @@ function renderTimeline(filings, news, tab) {
       entry.querySelector(".entry-card").addEventListener("click", () => toggleExpand(entry, filing));
       const trigger = entry.querySelector(".person-card-trigger");
       if (trigger && card) wirePersonCard(trigger, card);
+      entry.addEventListener("mouseenter", () => highlightPriceDate(tab, filing.filing_date));
+      entry.addEventListener("mouseleave", () => clearPriceHighlight(tab));
 
       timelineEl.appendChild(entry);
       pairs.push({ entry, filing });
@@ -308,6 +355,8 @@ function renderTimeline(filings, news, tab) {
           expandedEntries.add(entry);
         }
       });
+      entry.addEventListener("mouseenter", () => highlightPriceDate(tab, article.date));
+      entry.addEventListener("mouseleave", () => clearPriceHighlight(tab));
 
       timelineEl.appendChild(entry);
       pairs.push({ entry });
@@ -1084,6 +1133,194 @@ function escapeHtml(s) {
 
 function escapeAttr(s) {
   return String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// --- Price chart -----------------------------------------------------------
+
+function renderPriceChart(tab) {
+  const data = tab.priceData;
+  const panel = tab.pricePanelEl;
+  if (!data || data.length < 2) {
+    panel.hidden = true;
+    tab.priceChartGeom = null;
+    return;
+  }
+  panel.hidden = false;
+
+  const W = 280, H = 110;
+  const lows = data.map(d => d.low);
+  const highs = data.map(d => d.high);
+  const min = Math.min(...lows);
+  const max = Math.max(...highs);
+  const range = (max - min) || 1;
+
+  const points = data.map((bar, i) => {
+    const x = (i / (data.length - 1)) * W;
+    const y = H - ((bar.close - min) / range) * H;
+    return { x, y };
+  });
+
+  const linePath = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(" ");
+  const areaPath = `${linePath} L ${W} ${H} L 0 ${H} Z`;
+
+  tab.priceChartEl.querySelector(".price-line").setAttribute("d", linePath);
+  tab.priceChartEl.querySelector(".price-area").setAttribute("d", areaPath);
+
+  tab.priceChartGeom = { points, width: W, height: H, min, max, range };
+
+  panel.querySelector(".price-ticker").textContent = tab.ticker;
+  panel.querySelector(".price-date-from").textContent = data[0].date;
+  panel.querySelector(".price-date-to").textContent = data[data.length - 1].date;
+
+  clearPriceHighlight(tab);
+}
+
+function findNearestPriceBar(priceData, dateStr) {
+  if (!priceData || !priceData.length) return null;
+  let result = priceData[0];
+  for (const bar of priceData) {
+    if (bar.date <= dateStr) result = bar;
+    else break;
+  }
+  return result;
+}
+
+function showPriceSummary(tab, bar) {
+  const data = tab.priceData;
+  const panel = tab.pricePanelEl;
+  const valueEl = panel.querySelector(".price-value");
+  const changeEl = panel.querySelector(".price-change");
+  const dateEl = panel.querySelector(".price-summary-date");
+  const ohlcEl = panel.querySelector(".price-ohlc");
+
+  if (!bar) {
+    const first = data[0], last = data[data.length - 1];
+    const pct = ((last.close - first.close) / first.close) * 100;
+    valueEl.textContent = `$${last.close.toFixed(2)}`;
+    changeEl.textContent = `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}% (${data.length}d)`;
+    changeEl.style.color = pct >= 0 ? "#2eaa55" : "#e0524d";
+    dateEl.textContent = "Latest";
+    // Keep the OHLC row's layout space reserved (visibility: hidden) so the
+    // chart doesn't resize when hovering toggles it on/off.
+    ohlcEl.classList.add("price-ohlc-empty");
+    ohlcEl.innerHTML =
+      `<span>O <b>—</b></span><span>H <b>—</b></span><span>L <b>—</b></span>` +
+      `<span>C <b>—</b></span><span>Vol <b>—</b></span>`;
+    return;
+  }
+
+  const idx = data.indexOf(bar);
+  const prev = data[idx - 1];
+  valueEl.textContent = `$${bar.close.toFixed(2)}`;
+  if (prev) {
+    const pct = ((bar.close - prev.close) / prev.close) * 100;
+    changeEl.textContent = `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`;
+    changeEl.style.color = pct >= 0 ? "#2eaa55" : "#e0524d";
+  } else {
+    changeEl.textContent = "";
+  }
+  dateEl.textContent = bar.date;
+
+  ohlcEl.classList.remove("price-ohlc-empty");
+  ohlcEl.innerHTML =
+    `<span>O <b>${bar.open.toFixed(2)}</b></span>` +
+    `<span>H <b>${bar.high.toFixed(2)}</b></span>` +
+    `<span>L <b>${bar.low.toFixed(2)}</b></span>` +
+    `<span>C <b>${bar.close.toFixed(2)}</b></span>` +
+    `<span>Vol <b>${formatBigShares(bar.volume).replace(" sh.", "")}</b></span>`;
+}
+
+function highlightPriceDate(tab, dateStr) {
+  const geom = tab.priceChartGeom;
+  if (!geom) return;
+  const bar = findNearestPriceBar(tab.priceData, dateStr);
+  if (!bar) return;
+  const idx = tab.priceData.indexOf(bar);
+  const { x } = geom.points[idx];
+
+  const toY = (price) => geom.height - ((price - geom.min) / geom.range) * geom.height;
+  const yHigh = toY(bar.high);
+  const yLow = toY(bar.low);
+  const yOpen = toY(bar.open);
+  const yClose = toY(bar.close);
+  const isUp = bar.close >= bar.open;
+  const color = isUp ? "#2eaa55" : "#e0524d";
+  const candleW = Math.max(2, Math.min(8, (geom.width / tab.priceData.length) * 0.6));
+
+  const wick = tab.priceChartEl.querySelector(".price-hover-wick");
+  wick.setAttribute("x1", x);
+  wick.setAttribute("x2", x);
+  wick.setAttribute("y1", yHigh.toFixed(2));
+  wick.setAttribute("y2", yLow.toFixed(2));
+  wick.setAttribute("stroke", color);
+  wick.removeAttribute("hidden");
+
+  const body = tab.priceChartEl.querySelector(".price-hover-body");
+  const bodyTop = Math.min(yOpen, yClose);
+  const bodyHeight = Math.max(1, Math.abs(yClose - yOpen));
+  body.setAttribute("x", (x - candleW / 2).toFixed(2));
+  body.setAttribute("y", bodyTop.toFixed(2));
+  body.setAttribute("width", candleW.toFixed(2));
+  body.setAttribute("height", bodyHeight.toFixed(2));
+  body.setAttribute("fill", color);
+  body.removeAttribute("hidden");
+
+  showPriceSummary(tab, bar);
+}
+
+function clearPriceHighlight(tab) {
+  if (!tab.priceChartEl) return;
+  tab.priceChartEl.querySelector(".price-hover-wick").setAttribute("hidden", "");
+  tab.priceChartEl.querySelector(".price-hover-body").setAttribute("hidden", "");
+  if (tab.priceData && tab.priceData.length) showPriceSummary(tab, null);
+}
+
+// --- Latest 10-Q card --------------------------------------------------
+
+function renderLatest10Q(tab, filing) {
+  const box = tab.pricePanelEl.querySelector(".price-10q");
+  if (!filing) {
+    box.hidden = true;
+    return;
+  }
+
+  box.hidden = false;
+  tab.pricePanelEl.hidden = false;
+  box.querySelector(".p10q-date").textContent = filing.filing_date;
+
+  const header = box.querySelector(".p10q-header");
+  const extra = box.querySelector(".p10q-extra");
+  // Replace any previously-bound listener (renderLatest10Q can run again
+  // for the same tab when the user re-searches the same ticker).
+  const newHeader = header.cloneNode(true);
+  header.replaceWith(newHeader);
+
+  newHeader.addEventListener("click", () => {
+    const expanded = box.classList.toggle("expanded");
+    if (expanded && !extra.dataset.loaded) {
+      loadLatest10QDetail(extra, filing);
+    }
+  });
+}
+
+async function loadLatest10QDetail(extra, filing) {
+  extra.innerHTML = `<div class="extra-loading">Loading detail…</div>`;
+  try {
+    if (extraDetailCache.has(filing.accession_number)) {
+      renderExtraDetail(extra, extraDetailCache.get(filing.accession_number));
+    } else {
+      const res = await fetch(`/api/filing-detail?accession=${encodeURIComponent(filing.accession_number)}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Request failed");
+      extraDetailCache.set(filing.accession_number, data);
+      renderExtraDetail(extra, data);
+    }
+    extra.dataset.loaded = "1";
+    extra.insertAdjacentHTML("beforeend",
+      `<div style="margin-top:8px"><a href="${escapeAttr(filing.document_url)}" target="_blank" rel="noopener">View full filing →</a></div>`);
+  } catch (err) {
+    extra.innerHTML = `<div class="extra-loading">Couldn't load detail: ${err.message}</div>`;
+  }
 }
 
 // Preload a sample ticker on first visit so the page demonstrates itself

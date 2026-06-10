@@ -335,6 +335,25 @@ def fetch_filings(ticker: str, forms: list[str] | None = None, days: int = 30,
     }
 
 
+def fetch_latest_filing(ticker: str, form: str = "10-Q") -> dict | None:
+    """Return the company's most recent filing of the given form, regardless
+    of any date window — e.g. the latest 10-Q for a "recent activity" panel
+    that should show it even when it's older than the timeline's lookback."""
+    company = Company(ticker)
+    filings = list(company.get_filings(form=form))
+    if not filings:
+        return None
+    f = max(filings, key=lambda x: str(x.filing_date))
+    return {
+        "form": f.form,
+        "filing_date": str(f.filing_date),
+        "accession_number": f.accession_no,
+        "primary_document": f.primary_document,
+        "document_url": f"{f.base_dir}/{f.primary_document}" if f.primary_document else None,
+        "index_url": f.homepage_url,
+    }
+
+
 def _trades_to_records(df, columns: list[str]) -> list[dict]:
     """DataFrame -> list of dicts with only the given columns, NaN -> null."""
     if df is None or df.empty:

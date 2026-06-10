@@ -99,7 +99,7 @@ h1 {
 main {
   padding: 28px 28px 60px;
   position: relative;
-  max-width: 880px;
+  max-width: 1440px;
 }
 
 .company-info {
@@ -199,12 +199,136 @@ main {
    single restrained spine, newest first. Real-world filing dates cluster
    unevenly, so position is by sequence (not by literal date distance) —
    that's what keeps every row legible and avoids overlap entirely. ---- */
+.pane-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+}
+
 .timeline-wrapper {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 880px;
   padding: 4px 8px;
 }
 
 .timeline-inner {
   position: relative;
+}
+
+/* ---- Price chart panel: a sticky aside showing a simple line/area chart
+   of closing prices, with a summary line that reflects whichever timeline
+   entry the user is currently hovering (or the overall period by default). ---- */
+.price-panel {
+  flex: 1 1 360px;
+  min-width: 280px;
+  position: sticky;
+  top: 20px;
+  padding: 18px 22px;
+  border: 1px solid #d0d5e2;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.price-summary {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.price-ticker { font-weight: 700; font-size: 15px; color: #1c1e2a; }
+.price-value { font-size: 20px; font-weight: 700; color: #1c1e2a; }
+.price-change { font-size: 13px; font-weight: 600; }
+.price-summary-date { font-size: 12px; color: #8a92aa; margin-left: auto; }
+
+.price-chart {
+  width: 100%;
+  height: auto;
+  display: block;
+  overflow: visible;
+}
+.price-line { fill: none; stroke: #3b6ef0; stroke-width: 1.5; }
+.price-area { fill: rgba(59, 110, 240, 0.08); stroke: none; }
+.price-hover-wick { stroke-width: 1; }
+.price-hover-body { stroke: none; }
+.price-hover-wick[hidden],
+.price-hover-body[hidden] { display: none; }
+
+.price-ohlc {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: 11px;
+  color: #8a92aa;
+}
+.price-ohlc b { color: #4a5068; font-weight: 600; }
+/* visibility (not display) keeps this row's height reserved at all times,
+   so the chart above doesn't resize when hovering toggles it on/off. */
+.price-ohlc-empty { visibility: hidden; }
+
+.price-date-range {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 11px;
+  color: #8a92aa;
+}
+
+.price-10q {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #e8eaf2;
+}
+.p10q-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+}
+.p10q-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1c1e2a;
+}
+.p10q-label::before {
+  content: "▸";
+  display: inline-block;
+  margin-right: 6px;
+  font-size: 10px;
+  color: #8a92aa;
+  transition: transform 0.15s;
+}
+.price-10q.expanded .p10q-label::before {
+  transform: rotate(90deg);
+}
+.p10q-date {
+  font-size: 11px;
+  color: #8a92aa;
+}
+.p10q-extra {
+  display: none;
+  margin-top: 10px;
+}
+.price-10q.expanded .p10q-extra {
+  display: block;
+}
+
+@media (max-width: 1000px) {
+  .pane-layout {
+    flex-direction: column;
+  }
+  .timeline-wrapper {
+    max-width: none;
+    width: 100%;
+  }
+  .price-panel {
+    position: static;
+    width: 100%;
+    flex: 1 1 auto;
+  }
 }
 
 .timeline {
