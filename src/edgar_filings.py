@@ -14,9 +14,16 @@ import sys
 from datetime import datetime, timedelta
 
 import pandas as pd
+import requests
 from edgar import Company, Filing, find, set_identity
 
 DEFAULT_IDENTITY = "askEd research user@example.com"
+
+# Local Ollama instance used to turn an 8-K/6-K item's body text into a
+# one-line plain-English headline (see _summarize_with_ollama). Not a
+# required dependency — any failure to reach it just means no ai_summary.
+OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434/api/generate")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2")
 
 # Standard SEC Form 8-K / 6-K item codes -> plain-language description.
 # (Public, fixed list defined by SEC regulation S-K Item 8.01 schedule —
@@ -611,6 +618,30 @@ def _find_related_filing(company, detail: dict) -> dict | None:
     return None
 
 
+def _summarize_with_ollama(text: str) -> str | None:
+    """One-line plain-English headline for an 8-K/6-K disclosure's body text,
+    via a local Ollama model. Best-effort: the SEC item code + official
+    description are already shown regardless, so any failure here (Ollama
+    not running, model not pulled, timeout) just means no extra summary.
+    """
+    prompt = (
+        "Summarize this SEC 8-K/6-K disclosure in one short plain-English "
+        "headline (under 15 words). No preamble, no quotes, just the headline.\n\n"
+        f"{text}"
+    )
+    try:
+        resp = requests.post(
+            OLLAMA_URL,
+            json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        summary = resp.json().get("response", "").strip().strip('"')
+        return summary or None
+    except Exception:
+        return None
+
+
 def fetch_filing_detail(accession_number: str) -> dict:
     """Drill into a single filing's own document for the detail the bulk
     submissions list doesn't carry: insider names/positions/transaction
@@ -812,6 +843,19 @@ def fetch_filing_detail(accession_number: str) -> dict:
             {"description": pr.description, "excerpt": pr.text()[:1200]}
             for pr in releases[:1]
         ]
+
+        # Summarize each disclosed item on its own (8-K only — 6-K has no
+        # section-level parsing) rather than blending all items into one
+        # call: a single 8-K often bundles unrelated items (e.g. an ATM sale
+        # update alongside a routine Reg FD dashboard notice), and asking for
+        # one combined headline just drops whichever item comes second.
+        sections = getattr(obj, "sections", None) or {}
+        fallback_text = detail["press_releases"][0]["excerpt"] if detail["press_releases"] else None
+        for entry in detail["items"]:
+            key = "item_" + entry["code"].replace("Item ", "").replace(".", "")
+            section = sections.get(key)
+            source_text = section.text()[:3000] if section is not None else fallback_text
+            entry["ai_summary"] = _summarize_with_ollama(source_text) if source_text else None
 
     else:
         detail["kind"] = "generic"

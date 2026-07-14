@@ -507,6 +507,13 @@ main {
 .extra-line { margin-top: 4px; }
 .extra-line.muted, .extra-loading { color: #a0a8bc; font-style: italic; }
 
+.ai-summary {
+  margin: 2px 0 0;
+  font-size: 12px;
+  font-weight: 400;
+  color: #6a7188;
+}
+
 /* ---- Financial statement tabs (10-K / 10-Q detail panel) ---- */
 .fin-stmts { margin-top: 12px; }
 

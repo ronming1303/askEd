@@ -902,7 +902,7 @@ function renderExtraDetail(slot, data) {
 
   if (data.kind === "current_report") {
     const items = (data.items || [])
-      .map(i => `<li><b>${i.code}</b>${i.description ? ` — ${i.description}` : ""}</li>`).join("");
+      .map(i => `<li><b>${i.code}</b>${i.description ? ` — ${i.description}` : ""}${i.ai_summary ? `<div class="ai-summary">${escapeHtml(i.ai_summary)}</div>` : ""}</li>`).join("");
     const releases = (data.press_releases || []).map(p => `
       <div class="extra-title">Press release (${escapeHtml(p.description)})</div>
       <p class="excerpt">${escapeHtml(p.excerpt)}${p.excerpt.length >= 1200 ? "…" : ""}</p>
