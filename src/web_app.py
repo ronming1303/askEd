@@ -12,7 +12,7 @@ from pathlib import Path
 import requests as http_requests
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
-from edgar import set_identity
+from edgar import CompanyNotFoundError, set_identity
 
 from edgar_filings import fetch_filing_detail, fetch_filings, fetch_latest_filing, fetch_sale_summary
 
@@ -52,6 +52,11 @@ def api_filings():
 
     try:
         result = fetch_filings(ticker, forms=forms, days=days, newest_first=True)
+    except CompanyNotFoundError as exc:
+        return jsonify({
+            "error": f"Could not find a company for '{ticker}'",
+            "suggestions": exc.suggestions,
+        }), 404
     except Exception as exc:
         return jsonify({"error": f"Could not fetch filings for '{ticker}': {exc}"}), 502
 

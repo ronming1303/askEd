@@ -178,6 +178,27 @@ form.addEventListener("submit", (e) => {
   loadTicker(ticker, parseInt(daysInput.value) || 30);
 });
 
+// Search is strictly by exact ticker (see fetch_filings -> Company(ticker)),
+// not company name — so a CompanyNotFoundError's fuzzy suggestions (already
+// computed server-side by edgartools' search index) are surfaced here as
+// clickable "did you mean" chips instead of a dead-end error string.
+status.addEventListener("click", (e) => {
+  const btn = e.target.closest(".ticker-suggestion");
+  if (!btn) return;
+  tickerInput.value = btn.dataset.ticker;
+  loadTicker(btn.dataset.ticker, parseInt(daysInput.value) || 30);
+});
+
+function renderSearchError(message, suggestions) {
+  const chips = (suggestions || []).map(s => `
+    <button type="button" class="ticker-suggestion" data-ticker="${escapeAttr(s.ticker)}">${escapeHtml(s.ticker)} — ${escapeHtml(s.company)}</button>
+  `).join("");
+  status.innerHTML = `
+    <span>Error: ${escapeHtml(message)}</span>
+    ${chips ? `<div class="suggestions">Did you mean: ${chips}</div>` : ""}
+  `;
+}
+
 window.addEventListener("resize", redrawLink);
 
 // .entry-details animates its height via a CSS transition (grid-template-rows
@@ -205,7 +226,11 @@ async function loadTicker(ticker, days) {
       fetch(`/api/latest-filing?ticker=${encodeURIComponent(ticker)}&form=10-Q`).catch(() => null),
     ]);
     const data = await filingsRes.json();
-    if (!filingsRes.ok) throw new Error(data.error || "Request failed");
+    if (!filingsRes.ok) {
+      const err = new Error(data.error || "Request failed");
+      err.suggestions = data.suggestions;
+      throw err;
+    }
     let news = [];
     if (newsRes && newsRes.ok) {
       try { news = await newsRes.json(); } catch {}
@@ -225,7 +250,7 @@ async function loadTicker(ticker, days) {
     renderPriceChart(tab);
     renderLatest10Q(tab, latest10Q);
   } catch (err) {
-    status.textContent = `Error: ${err.message}`;
+    renderSearchError(err.message, err.suggestions);
     closeTab(tab.id);
   } finally {
     tab.fetchingFilings = false;
