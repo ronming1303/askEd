@@ -54,7 +54,7 @@ def api_filings():
         result = fetch_filings(ticker, forms=forms, days=days, newest_first=True)
     except CompanyNotFoundError as exc:
         return jsonify({
-            "error": f"Could not find a company for '{ticker}'",
+            "error": f"Could not find a ticker for '{ticker}'",
             "suggestions": exc.suggestions,
         }), 404
     except Exception as exc:
