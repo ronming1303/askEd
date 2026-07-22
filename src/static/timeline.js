@@ -90,6 +90,13 @@ function newTab(ticker) {
           </div>
           <div class="p10q-extra"></div>
         </div>
+        <div class="inst-panel" hidden>
+          <div class="ip-header">
+            <span class="ip-label">Institutional Ownership</span>
+            <span class="ip-date"></span>
+          </div>
+          <div class="ip-extra"></div>
+        </div>
       </aside>
     </div>
   `;
@@ -262,6 +269,7 @@ async function loadTicker(ticker, days) {
     renderTimeline(data.filings, news, tab);
     renderPriceChart(tab);
     renderLatest10Q(tab, latest10Q);
+    renderInstitutionalPanel(tab, tab.institutionalData);
   } catch (err) {
     renderSearchError(err.message, err.suggestions);
     closeTab(tab.id);
@@ -1406,6 +1414,40 @@ async function loadLatest10QDetail(extra, filing) {
   } catch (err) {
     extra.innerHTML = `<div class="extra-loading">Couldn't load detail: ${err.message}</div>`;
   }
+}
+
+// Snapshots already arrive in full from /api/institutional-holdings (unlike
+// the 10-Q card above, there's no per-row detail to lazy-fetch) — this just
+// lays out every cached quarter, most recent first, as a small table.
+function renderInstitutionalPanel(tab, snapshots) {
+  const box = tab.pricePanelEl.querySelector(".inst-panel");
+  if (!snapshots || !snapshots.length) {
+    box.hidden = true;
+    return;
+  }
+
+  box.hidden = false;
+  tab.pricePanelEl.hidden = false;
+  box.querySelector(".ip-date").textContent = snapshots[0].quarter;
+
+  const header = box.querySelector(".ip-header");
+  const extra = box.querySelector(".ip-extra");
+  // Replace any previously-bound listener (this can run again for the same
+  // tab when the user re-searches the same ticker).
+  const newHeader = header.cloneNode(true);
+  header.replaceWith(newHeader);
+
+  extra.innerHTML = snapshots.map(s => `
+    <div class="ip-row">
+      <span class="ip-quarter">${escapeHtml(s.quarter)}</span>
+      <span class="ip-metric">${s.institutional_ownership_pct != null ? s.institutional_ownership_pct + "% ownership" : "— ownership"}</span>
+      <span class="ip-metric">${s.concentration_pct != null ? s.concentration_pct + "% top-100 conc." : "— top-100 conc."}</span>
+    </div>
+  `).join("");
+
+  newHeader.addEventListener("click", () => {
+    box.classList.toggle("expanded");
+  });
 }
 
 // Preload a sample ticker on first visit so the page demonstrates itself

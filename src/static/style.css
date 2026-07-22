@@ -333,6 +333,57 @@ main {
   display: block;
 }
 
+.inst-panel {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #e8eaf2;
+}
+.ip-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+}
+.ip-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1c1e2a;
+}
+.ip-label::before {
+  content: "▸";
+  display: inline-block;
+  margin-right: 6px;
+  font-size: 10px;
+  color: #8a92aa;
+  transition: transform 0.15s;
+}
+.inst-panel.expanded .ip-label::before {
+  transform: rotate(90deg);
+}
+.ip-date {
+  font-size: 11px;
+  color: #8a92aa;
+}
+.ip-extra {
+  display: none;
+  margin-top: 10px;
+}
+.inst-panel.expanded .ip-extra {
+  display: block;
+}
+.ip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 12px;
+  border-bottom: 1px solid #f0f1f6;
+}
+.ip-row:last-child { border-bottom: none; }
+.ip-quarter { font-weight: 600; color: #3a4055; }
+.ip-metric { color: #6a7188; }
+
 @media (max-width: 1000px) {
   .pane-layout {
     flex-direction: column;
