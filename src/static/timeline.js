@@ -13,6 +13,13 @@ const OTHER_IDX = CATEGORIES.length; // sentinel index for OTHER category
 const NEWS_CAT = { label: "News article", short: "News", color: "#74c0fc" };
 const NEWS_IDX = CATEGORIES.length + 1; // sentinel index for news entries
 
+// Not a filing by the searched company — an aggregate reverse-indexed from
+// every OTHER institution's Form 13F that quarter. Deliberately a distinct
+// color from the "^13F" category above, which means the opposite thing
+// (this company reporting on ITS OWN holdings in other companies).
+const INSTITUTIONAL_CAT = { label: "Institutional ownership snapshot (13F aggregate)", short: "Ownership", color: "#3b5bdb" };
+const INSTITUTIONAL_IDX = CATEGORIES.length + 2; // sentinel index for institutional-ownership entries
+
 function categorize(form) {
   for (const cat of CATEGORIES) {
     if (cat.match.test(form)) return cat;
@@ -219,11 +226,12 @@ async function loadTicker(ticker, days) {
   tab.fetchingFilings = true;
   syncTabIndicator(tab);
   try {
-    const [filingsRes, newsRes, pricesRes, latest10QRes] = await Promise.all([
+    const [filingsRes, newsRes, pricesRes, latest10QRes, institutionalRes] = await Promise.all([
       fetch(`/api/filings?ticker=${encodeURIComponent(ticker)}&days=${encodeURIComponent(days)}`),
       fetch(`/api/news?ticker=${encodeURIComponent(ticker)}&days=${encodeURIComponent(days)}`).catch(() => null),
       fetch(`/api/prices?ticker=${encodeURIComponent(ticker)}&days=${encodeURIComponent(days)}`).catch(() => null),
       fetch(`/api/latest-filing?ticker=${encodeURIComponent(ticker)}&form=10-Q`).catch(() => null),
+      fetch(`/api/institutional-holdings?ticker=${encodeURIComponent(ticker)}`).catch(() => null),
     ]);
     const data = await filingsRes.json();
     if (!filingsRes.ok) {
@@ -243,8 +251,13 @@ async function loadTicker(ticker, days) {
     if (latest10QRes && latest10QRes.ok) {
       try { latest10Q = await latest10QRes.json(); } catch {}
     }
+    let institutional = [];
+    if (institutionalRes && institutionalRes.ok) {
+      try { institutional = await institutionalRes.json(); } catch {}
+    }
     tab.days = days;
     tab.priceData = Array.isArray(prices) ? prices : [];
+    tab.institutionalData = Array.isArray(institutional) ? institutional : [];
     renderCompanyInfo(data, tab);
     renderTimeline(data.filings, news, tab);
     renderPriceChart(tab);
@@ -272,18 +285,21 @@ function renderTimeline(filings, news, tab) {
   if (activeTabId === tab.id) expandedEntries = new Set();
 
   const newsArr = news || [];
+  const instArr = tab.institutionalData || [];
 
-  if (!filings.length && !newsArr.length) {
+  if (!filings.length && !newsArr.length && !instArr.length) {
     timelineEl.innerHTML = `<li class="empty">No filings match these criteria.</li>`;
     return;
   }
 
-  // Merge filings and news articles then sort newest-first. Rows are evenly
-  // spaced by sequence rather than proportionally to real date gaps — filing
-  // dates cluster unevenly, and sequence-based spacing keeps every row legible.
+  // Merge filings, news articles, and institutional-ownership snapshots then
+  // sort newest-first. Rows are evenly spaced by sequence rather than
+  // proportionally to real date gaps — filing dates cluster unevenly, and
+  // sequence-based spacing keeps every row legible.
   const allItems = [
     ...filings.map(f => ({ type: "filing", date: f.filing_date, data: f })),
     ...newsArr.map(a => ({ type: "news", date: a.date, data: a })),
+    ...instArr.map(s => ({ type: "institutional", date: s.disclosed_date, data: s })),
   ].sort((a, b) => b.date.localeCompare(a.date));
 
   const pairs = [];
@@ -339,7 +355,7 @@ function renderTimeline(filings, news, tab) {
 
       timelineEl.appendChild(entry);
       pairs.push({ entry, filing });
-    } else {
+    } else if (item.type === "news") {
       const article = item.data;
       const sentMap = { positive: "#51cf66", negative: "#ff6b6b", neutral: "#868e96" };
       const sentColor = sentMap[article.sentiment] || "#868e96";
@@ -385,6 +401,49 @@ function renderTimeline(filings, news, tab) {
 
       timelineEl.appendChild(entry);
       pairs.push({ entry });
+    } else if (item.type === "institutional") {
+      const snap = item.data;
+      const ownershipStr = snap.institutional_ownership_pct != null ? `${snap.institutional_ownership_pct}%` : "—";
+      const concentrationStr = snap.concentration_pct != null ? `${snap.concentration_pct}%` : "—";
+
+      const entry = document.createElement("li");
+      entry.className = "entry";
+      entry.dataset.catIdx = INSTITUTIONAL_IDX;
+      entry.innerHTML = `
+        <div class="entry-row">
+          <div class="entry-date">${snap.disclosed_date}</div>
+          <div class="entry-spine"><span class="marker" style="background:${INSTITUTIONAL_CAT.color}"></span></div>
+          <div class="entry-card">
+            <span class="badge" style="background:${INSTITUTIONAL_CAT.color}">${INSTITUTIONAL_CAT.short}</span>
+            <span class="entry-desc">Institutional ownership ${ownershipStr} · Top 100 concentration ${concentrationStr} (${escapeHtml(snap.quarter)})</span>
+          </div>
+        </div>
+        <div class="entry-details">
+          <div class="entry-details-clip">
+            <div class="entry-details-inner">
+              <div><span class="field">Quarter end</span>${snap.quarter_end}</div>
+              <div><span class="field">Total 13F shares</span>${snap.total_13f_shares.toLocaleString()}</div>
+              <div><span class="field">Reporting institutions</span>${snap.filer_count.toLocaleString()}</div>
+              <div><span class="field">Shares outstanding</span>${snap.shares_outstanding != null ? `${Math.round(snap.shares_outstanding).toLocaleString()} (as of ${snap.shares_outstanding_asof})` : "—"}</div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      entry.querySelector(".entry-card").addEventListener("click", () => {
+        if (expandedEntries.has(entry)) {
+          entry.classList.remove("expanded");
+          expandedEntries.delete(entry);
+        } else {
+          entry.classList.add("expanded");
+          expandedEntries.add(entry);
+        }
+      });
+      entry.addEventListener("mouseenter", () => highlightPriceDate(tab, snap.disclosed_date));
+      entry.addEventListener("mouseleave", () => clearPriceHighlight(tab));
+
+      timelineEl.appendChild(entry);
+      pairs.push({ entry });
     }
   }
 
@@ -406,6 +465,7 @@ function renderFilterBar(tab, pairs) {
     ...CATEGORIES.map((c, i) => ({ ...c, idx: i })),
     { ...OTHER, idx: OTHER_IDX },
     { ...NEWS_CAT, idx: NEWS_IDX },
+    { ...INSTITUTIONAL_CAT, idx: INSTITUTIONAL_IDX },
   ];
   for (const cat of allCats) {
     if (!present.has(cat.idx)) continue;

@@ -15,6 +15,7 @@ from flask import Flask, jsonify, render_template, request
 from edgar import CompanyNotFoundError, set_identity
 
 from edgar_filings import fetch_filing_detail, fetch_filings, fetch_latest_filing, fetch_sale_summary
+from institutional_holdings import get_snapshots_for_ticker
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 set_identity(os.environ.get("SEC_EDGAR_IDENTITY", "askEd research user@example.com"))
@@ -33,6 +34,7 @@ _sale_summary_cache: dict[str, dict | None] = {}
 _news_cache: dict[str, list] = {}
 _price_cache: dict[str, list] = {}
 _latest_filing_cache: dict[str, dict | None] = {}
+_institutional_cache: dict[str, list] = {}
 
 
 @app.get("/")
@@ -112,6 +114,21 @@ def api_latest_filing():
     if result is None:
         return jsonify({"error": f"No {form} filings found for '{ticker}'"}), 404
     return jsonify(result)
+
+
+@app.get("/api/institutional-holdings")
+def api_institutional_holdings():
+    ticker = request.args.get("ticker", "").strip().upper()
+    if not ticker:
+        return jsonify({"error": "ticker is required"}), 400
+
+    if ticker not in _institutional_cache:
+        try:
+            _institutional_cache[ticker] = get_snapshots_for_ticker(ticker)
+        except Exception as exc:
+            return jsonify({"error": f"Could not compute institutional holdings for '{ticker}': {exc}"}), 502
+
+    return jsonify(_institutional_cache[ticker])
 
 
 @app.get("/api/news")
