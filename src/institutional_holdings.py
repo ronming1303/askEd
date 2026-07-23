@@ -34,7 +34,7 @@ DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 RAW_DIR = DATA_DIR / "13f_raw"
 SNAPSHOT_DIR = DATA_DIR / "institutional_snapshots"
 
-TOP_N_CONCENTRATION = 100
+CONCENTRATION_TIERS = [10, 20, 50, 100]
 
 # 13F filings are due 45 days after each calendar quarter-end — a quarter's
 # aggregate ownership data isn't actually publicly knowable until then, so
@@ -101,16 +101,16 @@ def compute_quarter_snapshot(cusip: str, quarter_id: str) -> dict | None:
     )
 
     total_shares = int(per_accession["SSHPRNAMT"].sum())
-    top100_shares = int(
-        per_accession.sort_values("SSHPRNAMT", ascending=False).head(TOP_N_CONCENTRATION)["SSHPRNAMT"].sum()
-    )
+    sorted_shares = per_accession.sort_values("SSHPRNAMT", ascending=False)["SSHPRNAMT"]
 
-    return {
+    result = {
         "total_13f_shares": total_shares,
-        "top100_shares": top100_shares,
-        "concentration_pct": round(top100_shares / total_shares * 100, 1),
         "filer_count": len(per_accession),
     }
+    for n in CONCENTRATION_TIERS:
+        top_n_shares = int(sorted_shares.head(n).sum())
+        result[f"concentration_top{n}_pct"] = round(top_n_shares / total_shares * 100, 1)
+    return result
 
 
 def shares_outstanding_asof(ticker: str, quarter_end: date) -> tuple[float | None, str | None]:
@@ -187,12 +187,15 @@ def get_snapshots_for_ticker(ticker: str) -> list[dict]:
             if shares_out else None
         )
 
+        concentration_fields = {
+            k: v for k, v in snapshot.items() if k.startswith("concentration_top")
+        }
         quarters[quarter_id] = {
             "quarter": quarter_id,
             "quarter_end": quarter_end.isoformat(),
             "disclosed_date": (quarter_end + timedelta(days=DISCLOSURE_LAG_DAYS)).isoformat(),
             "institutional_ownership_pct": ownership_pct,
-            "concentration_pct": snapshot["concentration_pct"],
+            **concentration_fields,
             "total_13f_shares": snapshot["total_13f_shares"],
             "filer_count": snapshot["filer_count"],
             "shares_outstanding": shares_out,
@@ -219,12 +222,17 @@ def main() -> None:
         print(f"No institutional data available for {args.ticker} (no cached quarters or unresolvable ticker)")
         return
 
-    header = f"{'quarter':<8} {'ownership%':>10} {'concentration%':>15} {'filers':>8} {'disclosed':>12}"
+    header = (
+        f"{'quarter':<8} {'ownership%':>10} {'top10%':>7} {'top20%':>7} "
+        f"{'top50%':>7} {'top100%':>8} {'filers':>8} {'disclosed':>12}"
+    )
     print(header)
     for s in snapshots:
         print(
             f"{s['quarter']:<8} {s['institutional_ownership_pct']!s:>10} "
-            f"{s['concentration_pct']!s:>15} {s['filer_count']:>8} {s['disclosed_date']:>12}"
+            f"{s['concentration_top10_pct']!s:>7} {s['concentration_top20_pct']!s:>7} "
+            f"{s['concentration_top50_pct']!s:>7} {s['concentration_top100_pct']!s:>8} "
+            f"{s['filer_count']:>8} {s['disclosed_date']:>12}"
         )
 
 

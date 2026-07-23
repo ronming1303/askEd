@@ -373,16 +373,23 @@ main {
   display: block;
 }
 .ip-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 4px 0;
+  padding: 6px 0;
   font-size: 12px;
   border-bottom: 1px solid #f0f1f6;
 }
 .ip-row:last-child { border-bottom: none; }
+.ip-row-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
 .ip-quarter { font-weight: 600; color: #3a4055; }
 .ip-metric { color: #6a7188; }
+.ip-row-conc {
+  margin-top: 3px;
+  color: #8a92aa;
+  font-size: 11px;
+}
 
 @media (max-width: 1000px) {
   .pane-layout {

@@ -411,8 +411,8 @@ function renderTimeline(filings, news, tab) {
       pairs.push({ entry });
     } else if (item.type === "institutional") {
       const snap = item.data;
-      const ownershipStr = snap.institutional_ownership_pct != null ? `${snap.institutional_ownership_pct}%` : "—";
-      const concentrationStr = snap.concentration_pct != null ? `${snap.concentration_pct}%` : "—";
+      const ownershipStr = fmtPct(snap.institutional_ownership_pct);
+      const concentrationStr = fmtPct(snap.concentration_top100_pct);
 
       const entry = document.createElement("li");
       entry.className = "entry";
@@ -430,6 +430,7 @@ function renderTimeline(filings, news, tab) {
           <div class="entry-details-clip">
             <div class="entry-details-inner">
               <div><span class="field">Quarter end</span>${snap.quarter_end}</div>
+              <div><span class="field">Concentration</span>Top10 ${fmtPct(snap.concentration_top10_pct)} · Top20 ${fmtPct(snap.concentration_top20_pct)} · Top50 ${fmtPct(snap.concentration_top50_pct)} · Top100 ${fmtPct(snap.concentration_top100_pct)}</div>
               <div><span class="field">Total 13F shares</span>${snap.total_13f_shares.toLocaleString()}</div>
               <div><span class="field">Reporting institutions</span>${snap.filer_count.toLocaleString()}</div>
               <div><span class="field">Shares outstanding</span>${snap.shares_outstanding != null ? `${Math.round(snap.shares_outstanding).toLocaleString()} (as of ${snap.shares_outstanding_asof})` : "—"}</div>
@@ -1190,6 +1191,10 @@ function formatNumber(n) {
   return (n === null || n === undefined) ? "—" : Number(n).toLocaleString();
 }
 
+function fmtPct(n) {
+  return n != null ? `${n}%` : "—";
+}
+
 function formatPrice(n) {
   return (n === null || n === undefined) ? "—" : `$${Number(n).toFixed(2)}`;
 }
@@ -1439,9 +1444,11 @@ function renderInstitutionalPanel(tab, snapshots) {
 
   extra.innerHTML = snapshots.map(s => `
     <div class="ip-row">
-      <span class="ip-quarter">${escapeHtml(s.quarter)}</span>
-      <span class="ip-metric">${s.institutional_ownership_pct != null ? s.institutional_ownership_pct + "% ownership" : "— ownership"}</span>
-      <span class="ip-metric">${s.concentration_pct != null ? s.concentration_pct + "% top-100 conc." : "— top-100 conc."}</span>
+      <div class="ip-row-top">
+        <span class="ip-quarter">${escapeHtml(s.quarter)}</span>
+        <span class="ip-metric">${fmtPct(s.institutional_ownership_pct)} ownership</span>
+      </div>
+      <div class="ip-row-conc">Top 10/20/50/100: ${fmtPct(s.concentration_top10_pct)} / ${fmtPct(s.concentration_top20_pct)} / ${fmtPct(s.concentration_top50_pct)} / ${fmtPct(s.concentration_top100_pct)}</div>
     </div>
   `).join("");
 
