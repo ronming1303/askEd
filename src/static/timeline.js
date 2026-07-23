@@ -116,8 +116,12 @@ function newTab(ticker) {
           </div>
           <div class="tp-extra">
             <div class="tp-block">
-              <div class="tp-block-label">SMA 20 / 50</div>
+              <div class="tp-block-label">SMA 20 / 50 &amp; Bollinger Bands</div>
               <svg class="tp-sma-chart" viewBox="0 0 260 70" preserveAspectRatio="none"></svg>
+            </div>
+            <div class="tp-block">
+              <div class="tp-block-label">Volume</div>
+              <svg class="tp-volume-chart" viewBox="0 0 260 36" preserveAspectRatio="none"></svg>
             </div>
             <div class="tp-block">
               <div class="tp-block-label">RSI (14)</div>
@@ -1666,18 +1670,53 @@ function renderTechnicalPanel(tab) {
     return pts.map((p, idx) => `${idx === 0 ? "M" : "L"} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(" ");
   };
 
-  // --- SMA 20/50 over close ---
+  // --- SMA 20/50 + Bollinger Bands(20,2) over close ---
   const closeVals = data.map(d => d.close);
   const sma20Vals = data.map(d => d.sma20);
   const sma50Vals = data.map(d => d.sma50);
-  const smaAll = [...closeVals, ...sma20Vals, ...sma50Vals].filter(v => v != null);
+  const bbUpperVals = data.map(d => d.bb_upper);
+  const bbLowerVals = data.map(d => d.bb_lower);
+  const smaAll = [...closeVals, ...sma20Vals, ...sma50Vals, ...bbUpperVals, ...bbLowerVals].filter(v => v != null);
   const smaMin = Math.min(...smaAll), smaMax = Math.max(...smaAll);
   const smaW = 260, smaH = 70;
+
+  // Filled envelope between the bands — built as one closed polygon (upper
+  // edge left-to-right, then lower edge back right-to-left) rather than two
+  // separate lines, so it can be filled as a single translucent shape.
+  const areaBetween = (upperVals, lowerVals, W, H, min, max) => {
+    const range = (max - min) || 1;
+    const idxs = [];
+    upperVals.forEach((v, i) => { if (v != null && lowerVals[i] != null) idxs.push(i); });
+    if (!idxs.length) return "";
+    const xy = (v, i) => `${((i / (n - 1)) * W).toFixed(2)} ${(H - ((v - min) / range) * H).toFixed(2)}`;
+    const upper = idxs.map((i, k) => `${k === 0 ? "M" : "L"} ${xy(upperVals[i], i)}`).join(" ");
+    const lower = [...idxs].reverse().map(i => `L ${xy(lowerVals[i], i)}`).join(" ");
+    return `${upper} ${lower} Z`;
+  };
+
   box.querySelector(".tp-sma-chart").innerHTML = `
+    <path d="${areaBetween(bbUpperVals, bbLowerVals, smaW, smaH, smaMin, smaMax)}" fill="#3b6ef01a" stroke="none" />
+    <path d="${pathFor(bbUpperVals, smaW, smaH, smaMin, smaMax)}" fill="none" stroke="#3b6ef066" stroke-width="1" stroke-dasharray="2,2" />
+    <path d="${pathFor(bbLowerVals, smaW, smaH, smaMin, smaMax)}" fill="none" stroke="#3b6ef066" stroke-width="1" stroke-dasharray="2,2" />
     <path d="${pathFor(closeVals, smaW, smaH, smaMin, smaMax)}" fill="none" stroke="#ced4da" stroke-width="1.25" />
     <path d="${pathFor(sma20Vals, smaW, smaH, smaMin, smaMax)}" fill="none" stroke="#3b6ef0" stroke-width="1.5" />
     <path d="${pathFor(sma50Vals, smaW, smaH, smaMin, smaMax)}" fill="none" stroke="#f76707" stroke-width="1.5" />
   `;
+
+  // --- Volume, colored by up/down day vs. the prior close ---
+  const volumeVals = data.map(d => d.volume);
+  const volMax = Math.max(...volumeVals.filter(v => v != null), 1);
+  const volW = 260, volH = 36;
+  const volBarW = (volW / n) * 0.7;
+  const volBars = volumeVals.map((v, i) => {
+    if (v == null) return "";
+    const h = (v / volMax) * volH;
+    const x = (i / (n - 1)) * volW - volBarW / 2;
+    const prevClose = i > 0 ? closeVals[i - 1] : null;
+    const color = (prevClose == null || closeVals[i] >= prevClose) ? "#2eaa55" : "#e0524d";
+    return `<rect x="${x.toFixed(2)}" y="${(volH - h).toFixed(2)}" width="${volBarW.toFixed(2)}" height="${h.toFixed(2)}" fill="${color}" opacity="0.75" />`;
+  }).join("");
+  box.querySelector(".tp-volume-chart").innerHTML = volBars;
 
   // --- RSI(14), fixed 0-100 scale with 30/70 reference lines ---
   const rsiVals = data.map(d => d.rsi14);

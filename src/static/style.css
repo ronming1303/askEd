@@ -508,7 +508,7 @@ main {
   color: #a0a8bc;
   margin-bottom: 4px;
 }
-.tp-sma-chart, .tp-rsi-chart, .tp-macd-chart {
+.tp-sma-chart, .tp-volume-chart, .tp-rsi-chart, .tp-macd-chart {
   width: 100%;
   display: block;
 }

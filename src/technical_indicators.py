@@ -1,9 +1,9 @@
 """Classic technical-analysis indicators computed purely from OHLC bars
 already fetched for the price chart — no external data source, no I/O.
 
-SMA 20/50 (trend), RSI(14) (momentum oscillator, Wilder's smoothing), and
-MACD(12,26,9) (trend/momentum) are the three shown in the Technical
-Indicators sidebar panel.
+SMA 20/50 + Bollinger Bands(20,2) (trend/volatility), RSI(14) (momentum
+oscillator, Wilder's smoothing), and MACD(12,26,9) (trend/momentum) are
+shown in the Technical Indicators sidebar panel.
 """
 
 import pandas as pd
@@ -11,9 +11,9 @@ import pandas as pd
 
 def compute_indicators(bars: list[dict]) -> list[dict]:
     """bars: date-ascending list of dicts with a 'close' key. Returns the
-    same list with sma20, sma50, rsi14, macd, macd_signal, macd_hist added
-    to each dict — None wherever there isn't enough history yet to compute
-    a value (the initial warm-up window).
+    same list with sma20, sma50, bb_upper, bb_lower, rsi14, macd,
+    macd_signal, macd_hist added to each dict — None wherever there isn't
+    enough history yet to compute a value (the initial warm-up window).
     """
     if not bars:
         return bars
@@ -22,6 +22,9 @@ def compute_indicators(bars: list[dict]) -> list[dict]:
 
     sma20 = close.rolling(20).mean()
     sma50 = close.rolling(50).mean()
+    std20 = close.rolling(20).std()
+    bb_upper = sma20 + 2 * std20
+    bb_lower = sma20 - 2 * std20
 
     ema12 = close.ewm(span=12, adjust=False).mean()
     ema26 = close.ewm(span=26, adjust=False).mean()
@@ -45,6 +48,8 @@ def compute_indicators(bars: list[dict]) -> list[dict]:
 
     sma20_vals = _clean(sma20)
     sma50_vals = _clean(sma50)
+    bb_upper_vals = _clean(bb_upper)
+    bb_lower_vals = _clean(bb_lower)
     rsi14_vals = _clean(rsi14)
     macd_vals = _clean(macd)
     macd_signal_vals = _clean(macd_signal)
@@ -53,6 +58,8 @@ def compute_indicators(bars: list[dict]) -> list[dict]:
     for i, bar in enumerate(bars):
         bar["sma20"] = sma20_vals[i]
         bar["sma50"] = sma50_vals[i]
+        bar["bb_upper"] = bb_upper_vals[i]
+        bar["bb_lower"] = bb_lower_vals[i]
         bar["rsi14"] = rsi14_vals[i]
         bar["macd"] = macd_vals[i]
         bar["macd_signal"] = macd_signal_vals[i]
