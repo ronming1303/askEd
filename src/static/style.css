@@ -328,6 +328,10 @@ main {
 .p10q-extra {
   display: none;
   margin-top: 10px;
+  /* Financial statements can run long — scroll within the card instead of
+     growing the whole sidebar to match. */
+  max-height: 300px;
+  overflow-y: auto;
 }
 .price-10q.expanded .p10q-extra {
   display: block;
