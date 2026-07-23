@@ -1443,24 +1443,28 @@ function renderInstitutionalPanel(tab, snapshots) {
   header.replaceWith(newHeader);
 
   // snapshots are newest-first, so the next array entry is one quarter older
-  // — that's what the ownership up/down indicator compares against.
+  // — every column's up/down indicator compares against that same prior row.
+  const cellWithDelta = (curSnap, prevSnap, key) => {
+    const cur = curSnap[key];
+    const prev = prevSnap ? prevSnap[key] : null;
+    const valueStr = fmtPct(cur);
+    if (cur == null || prev == null) return valueStr;
+    const delta = cur - prev;
+    const color = delta >= 0 ? "#2eaa55" : "#e0524d";
+    const arrow = delta >= 0 ? "▲" : "▼";
+    return `${valueStr}<br><span class="ip-delta" style="color:${color}">${arrow}${Math.abs(delta).toFixed(1)}</span>`;
+  };
+
   const rows = snapshots.map((s, i) => {
     const prev = snapshots[i + 1];
-    let deltaHtml = "";
-    if (s.institutional_ownership_pct != null && prev && prev.institutional_ownership_pct != null) {
-      const delta = s.institutional_ownership_pct - prev.institutional_ownership_pct;
-      const color = delta >= 0 ? "#2eaa55" : "#e0524d";
-      const arrow = delta >= 0 ? "▲" : "▼";
-      deltaHtml = ` <span class="ip-delta" style="color:${color}">${arrow}${Math.abs(delta).toFixed(1)}</span>`;
-    }
     return `
       <tr>
         <td class="ip-q">${escapeHtml(s.quarter)}</td>
-        <td class="ip-own">${fmtPct(s.institutional_ownership_pct)}${deltaHtml}</td>
-        <td>${fmtPct(s.concentration_top10_pct)}</td>
-        <td>${fmtPct(s.concentration_top20_pct)}</td>
-        <td>${fmtPct(s.concentration_top50_pct)}</td>
-        <td>${fmtPct(s.concentration_top100_pct)}</td>
+        <td class="ip-own">${cellWithDelta(s, prev, "institutional_ownership_pct")}</td>
+        <td>${cellWithDelta(s, prev, "concentration_top10_pct")}</td>
+        <td>${cellWithDelta(s, prev, "concentration_top20_pct")}</td>
+        <td>${cellWithDelta(s, prev, "concentration_top50_pct")}</td>
+        <td>${cellWithDelta(s, prev, "concentration_top100_pct")}</td>
       </tr>
     `;
   }).join("");
