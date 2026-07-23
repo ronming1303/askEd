@@ -1442,15 +1442,37 @@ function renderInstitutionalPanel(tab, snapshots) {
   const newHeader = header.cloneNode(true);
   header.replaceWith(newHeader);
 
-  extra.innerHTML = snapshots.map(s => `
-    <div class="ip-row">
-      <div class="ip-row-top">
-        <span class="ip-quarter">${escapeHtml(s.quarter)}</span>
-        <span class="ip-metric">${fmtPct(s.institutional_ownership_pct)} ownership</span>
-      </div>
-      <div class="ip-row-conc">Top 10/20/50/100: ${fmtPct(s.concentration_top10_pct)} / ${fmtPct(s.concentration_top20_pct)} / ${fmtPct(s.concentration_top50_pct)} / ${fmtPct(s.concentration_top100_pct)}</div>
-    </div>
-  `).join("");
+  // snapshots are newest-first, so the next array entry is one quarter older
+  // — that's what the ownership up/down indicator compares against.
+  const rows = snapshots.map((s, i) => {
+    const prev = snapshots[i + 1];
+    let deltaHtml = "";
+    if (s.institutional_ownership_pct != null && prev && prev.institutional_ownership_pct != null) {
+      const delta = s.institutional_ownership_pct - prev.institutional_ownership_pct;
+      const color = delta >= 0 ? "#2eaa55" : "#e0524d";
+      const arrow = delta >= 0 ? "▲" : "▼";
+      deltaHtml = ` <span class="ip-delta" style="color:${color}">${arrow}${Math.abs(delta).toFixed(1)}</span>`;
+    }
+    return `
+      <tr>
+        <td class="ip-q">${escapeHtml(s.quarter)}</td>
+        <td class="ip-own">${fmtPct(s.institutional_ownership_pct)}${deltaHtml}</td>
+        <td>${fmtPct(s.concentration_top10_pct)}</td>
+        <td>${fmtPct(s.concentration_top20_pct)}</td>
+        <td>${fmtPct(s.concentration_top50_pct)}</td>
+        <td>${fmtPct(s.concentration_top100_pct)}</td>
+      </tr>
+    `;
+  }).join("");
+
+  extra.innerHTML = `
+    <table class="ip-table">
+      <thead>
+        <tr><th>Qtr</th><th>Own%</th><th>10</th><th>20</th><th>50</th><th>100</th></tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
 
   newHeader.addEventListener("click", () => {
     box.classList.toggle("expanded");

@@ -368,28 +368,37 @@ main {
 .ip-extra {
   display: none;
   margin-top: 10px;
+  overflow-x: auto;
 }
 .inst-panel.expanded .ip-extra {
   display: block;
 }
-.ip-row {
-  padding: 6px 0;
-  font-size: 12px;
+.ip-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10.5px;
+}
+.ip-table th, .ip-table td {
+  padding: 4px 1px;
+  text-align: right;
+  white-space: nowrap;
+}
+.ip-table th:first-child, .ip-table td:first-child {
+  text-align: left;
+}
+.ip-table th {
+  color: #8a92aa;
+  font-weight: 600;
+  border-bottom: 1px solid #e8eaf2;
+}
+.ip-table td {
+  color: #6a7188;
   border-bottom: 1px solid #f0f1f6;
 }
-.ip-row:last-child { border-bottom: none; }
-.ip-row-top {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-}
-.ip-quarter { font-weight: 600; color: #3a4055; }
-.ip-metric { color: #6a7188; }
-.ip-row-conc {
-  margin-top: 3px;
-  color: #8a92aa;
-  font-size: 11px;
-}
+.ip-table tr:last-child td { border-bottom: none; }
+.ip-q { font-weight: 600; color: #3a4055; }
+.ip-own { color: #3a4055; font-weight: 500; }
+.ip-delta { font-weight: 700; font-size: 10px; }
 
 @media (max-width: 1000px) {
   .pane-layout {
