@@ -245,6 +245,12 @@ main {
   border: 1px solid #d0d5e2;
   border-radius: 10px;
   background: #ffffff;
+  /* With the 10-Q / Ownership / Short Interest cards all expanded at once,
+     combined content can run past one screen — cap the whole sticky panel
+     to the viewport height and let it scroll as a unit rather than push
+     past the bottom of the page. */
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
 }
 
 .price-summary {
@@ -373,6 +379,10 @@ main {
   display: none;
   margin-top: 10px;
   overflow-x: auto;
+  /* Grows by one row every quarter as more history gets backfilled — cap
+     it the same way as the 10-Q and Short Interest cards. */
+  max-height: 250px;
+  overflow-y: auto;
 }
 .inst-panel.expanded .ip-extra {
   display: block;
