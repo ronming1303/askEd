@@ -459,6 +459,60 @@ main {
   display: block;
 }
 
+.tech-panel {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #e8eaf2;
+}
+.tp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+}
+.tp-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1c1e2a;
+}
+.tp-label::before {
+  content: "▸";
+  display: inline-block;
+  margin-right: 6px;
+  font-size: 10px;
+  color: #8a92aa;
+  transition: transform 0.15s;
+}
+.tech-panel.expanded .tp-label::before {
+  transform: rotate(90deg);
+}
+.tp-date {
+  font-size: 11px;
+  color: #8a92aa;
+}
+.tp-extra {
+  display: none;
+  margin-top: 10px;
+}
+.tech-panel.expanded .tp-extra {
+  display: block;
+}
+.tp-block { margin-bottom: 12px; }
+.tp-block:last-child { margin-bottom: 0; }
+.tp-block-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: #a0a8bc;
+  margin-bottom: 4px;
+}
+.tp-sma-chart, .tp-rsi-chart, .tp-macd-chart {
+  width: 100%;
+  display: block;
+}
+
 @media (max-width: 1000px) {
   .pane-layout {
     flex-direction: column;

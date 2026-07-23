@@ -16,6 +16,7 @@ from edgar import CompanyNotFoundError, set_identity
 
 from edgar_filings import fetch_filing_detail, fetch_filings, fetch_latest_filing, fetch_sale_summary
 from institutional_holdings import get_snapshots_for_ticker
+from technical_indicators import compute_indicators
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 set_identity(os.environ.get("SEC_EDGAR_IDENTITY", "askEd research user@example.com"))
@@ -224,19 +225,23 @@ def api_prices():
 
     days = request.args.get("days", default=30, type=int)
     to_date = date.today().isoformat()
-    from_date = (date.today() - timedelta(days=days)).isoformat()
+    display_from = date.today() - timedelta(days=days)
     cache_key = f"{ticker}:{days}"
 
     if cache_key not in _price_cache:
         try:
+            # Fetch extra lookback before the display window so SMA50/MACD's
+            # EMA26 have room to warm up — trimmed back to the requested
+            # window below, so this stays invisible to callers.
+            fetch_from = (display_from - timedelta(days=130)).isoformat()
             resp = http_requests.get(
-                f"https://api.polygon.io/v2/aggs/ticker/{ticker}/range/1/day/{from_date}/{to_date}",
+                f"https://api.polygon.io/v2/aggs/ticker/{ticker}/range/1/day/{fetch_from}/{to_date}",
                 params={"adjusted": "true", "sort": "asc", "apiKey": api_key},
                 timeout=10,
             )
             resp.raise_for_status()
             raw = resp.json().get("results", [])
-            _price_cache[cache_key] = [
+            bars = [
                 {
                     "date": datetime.utcfromtimestamp(bar["t"] / 1000).strftime("%Y-%m-%d"),
                     "open": bar["o"],
@@ -247,6 +252,9 @@ def api_prices():
                 }
                 for bar in raw
             ]
+            bars = compute_indicators(bars)
+            display_from_str = display_from.isoformat()
+            _price_cache[cache_key] = [b for b in bars if b["date"] >= display_from_str]
         except Exception as exc:
             return jsonify({"error": str(exc)}), 502
 

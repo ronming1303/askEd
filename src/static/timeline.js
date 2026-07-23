@@ -109,6 +109,26 @@ function newTab(ticker) {
           </div>
           <div class="si-extra"></div>
         </div>
+        <div class="tech-panel" hidden>
+          <div class="tp-header">
+            <span class="tp-label">Technical Indicators</span>
+            <span class="tp-date"></span>
+          </div>
+          <div class="tp-extra">
+            <div class="tp-block">
+              <div class="tp-block-label">SMA 20 / 50</div>
+              <svg class="tp-sma-chart" viewBox="0 0 260 70" preserveAspectRatio="none"></svg>
+            </div>
+            <div class="tp-block">
+              <div class="tp-block-label">RSI (14)</div>
+              <svg class="tp-rsi-chart" viewBox="0 0 260 50" preserveAspectRatio="none"></svg>
+            </div>
+            <div class="tp-block">
+              <div class="tp-block-label">MACD (12, 26, 9)</div>
+              <svg class="tp-macd-chart" viewBox="0 0 260 60" preserveAspectRatio="none"></svg>
+            </div>
+          </div>
+        </div>
       </aside>
     </div>
   `;
@@ -286,6 +306,7 @@ async function loadTicker(ticker, days) {
     renderCompanyInfo(data, tab);
     renderTimeline(data.filings, news, tab);
     renderPriceChart(tab);
+    renderTechnicalPanel(tab);
     renderLatest10Q(tab, latest10Q);
     renderInstitutionalPanel(tab, tab.institutionalData);
     renderShortInterestPanel(tab, tab.shortInterestData);
@@ -1603,6 +1624,93 @@ function renderShortInterestPanel(tab, snapshots) {
   newHeader.addEventListener("click", () => {
     box.classList.toggle("expanded");
   });
+}
+
+// Unlike the panels above, this reads tab.priceData directly — no separate
+// fetch. api_prices() already fetches extra lookback before the display
+// window so SMA50/MACD have room to warm up, then trims back down, so every
+// bar already carries sma20/sma50/rsi14/macd/macd_signal/macd_hist (null
+// during the warm-up window, which for a very new listing can mean "for the
+// whole visible range" — the null-filtering below just draws a shorter line
+// starting wherever values become valid).
+function renderTechnicalPanel(tab) {
+  const box = tab.pricePanelEl.querySelector(".tech-panel");
+  const data = tab.priceData;
+  const hasAny = data && data.some(d => d.sma20 != null || d.rsi14 != null || d.macd != null);
+  if (!data || data.length < 2 || !hasAny) {
+    box.hidden = true;
+    return;
+  }
+
+  box.hidden = false;
+  tab.pricePanelEl.hidden = false;
+  box.querySelector(".tp-date").textContent = data[data.length - 1].date;
+
+  const header = box.querySelector(".tp-header");
+  const newHeader = header.cloneNode(true);
+  header.replaceWith(newHeader);
+  newHeader.addEventListener("click", () => {
+    box.classList.toggle("expanded");
+  });
+
+  const n = data.length;
+  // Same index-based x-scale as renderPriceChart, but skips null points
+  // (the warm-up prefix) rather than plotting through them.
+  const pathFor = (values, W, H, min, max) => {
+    const range = (max - min) || 1;
+    const pts = [];
+    values.forEach((v, i) => {
+      if (v == null) return;
+      pts.push({ x: (i / (n - 1)) * W, y: H - ((v - min) / range) * H });
+    });
+    return pts.map((p, idx) => `${idx === 0 ? "M" : "L"} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(" ");
+  };
+
+  // --- SMA 20/50 over close ---
+  const closeVals = data.map(d => d.close);
+  const sma20Vals = data.map(d => d.sma20);
+  const sma50Vals = data.map(d => d.sma50);
+  const smaAll = [...closeVals, ...sma20Vals, ...sma50Vals].filter(v => v != null);
+  const smaMin = Math.min(...smaAll), smaMax = Math.max(...smaAll);
+  const smaW = 260, smaH = 70;
+  box.querySelector(".tp-sma-chart").innerHTML = `
+    <path d="${pathFor(closeVals, smaW, smaH, smaMin, smaMax)}" fill="none" stroke="#ced4da" stroke-width="1.25" />
+    <path d="${pathFor(sma20Vals, smaW, smaH, smaMin, smaMax)}" fill="none" stroke="#3b6ef0" stroke-width="1.5" />
+    <path d="${pathFor(sma50Vals, smaW, smaH, smaMin, smaMax)}" fill="none" stroke="#f76707" stroke-width="1.5" />
+  `;
+
+  // --- RSI(14), fixed 0-100 scale with 30/70 reference lines ---
+  const rsiVals = data.map(d => d.rsi14);
+  const rsiW = 260, rsiH = 50;
+  const rsiY = (v) => (rsiH - (v / 100) * rsiH).toFixed(2);
+  box.querySelector(".tp-rsi-chart").innerHTML = `
+    <line x1="0" y1="${rsiY(70)}" x2="${rsiW}" y2="${rsiY(70)}" stroke="#dee2e6" stroke-width="1" stroke-dasharray="3,2" />
+    <line x1="0" y1="${rsiY(30)}" x2="${rsiW}" y2="${rsiY(30)}" stroke="#dee2e6" stroke-width="1" stroke-dasharray="3,2" />
+    <path d="${pathFor(rsiVals, rsiW, rsiH, 0, 100)}" fill="none" stroke="#ae3ec9" stroke-width="1.5" />
+  `;
+
+  // --- MACD(12,26,9): line + signal + histogram ---
+  const macdVals = data.map(d => d.macd);
+  const signalVals = data.map(d => d.macd_signal);
+  const histVals = data.map(d => d.macd_hist);
+  const macdAll = [...macdVals, ...signalVals, ...histVals].filter(v => v != null);
+  const macdMin = Math.min(0, ...macdAll), macdMax = Math.max(0, ...macdAll);
+  const macdW = 260, macdH = 60;
+  const macdRange = (macdMax - macdMin) || 1;
+  const barW = (macdW / n) * 0.6;
+  const zeroY = macdH - ((0 - macdMin) / macdRange) * macdH;
+  const bars = histVals.map((v, i) => {
+    if (v == null) return "";
+    const x = (i / (n - 1)) * macdW - barW / 2;
+    const y = macdH - ((v - macdMin) / macdRange) * macdH;
+    const top = Math.min(y, zeroY), h = Math.abs(y - zeroY);
+    return `<rect x="${x.toFixed(2)}" y="${top.toFixed(2)}" width="${barW.toFixed(2)}" height="${h.toFixed(2)}" fill="${v >= 0 ? "#2eaa55" : "#e0524d"}" />`;
+  }).join("");
+  box.querySelector(".tp-macd-chart").innerHTML = `
+    ${bars}
+    <path d="${pathFor(macdVals, macdW, macdH, macdMin, macdMax)}" fill="none" stroke="#3b6ef0" stroke-width="1.25" />
+    <path d="${pathFor(signalVals, macdW, macdH, macdMin, macdMax)}" fill="none" stroke="#f76707" stroke-width="1.25" />
+  `;
 }
 
 // Preload a sample ticker on first visit so the page demonstrates itself
