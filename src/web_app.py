@@ -35,6 +35,7 @@ _news_cache: dict[str, list] = {}
 _price_cache: dict[str, list] = {}
 _latest_filing_cache: dict[str, dict | None] = {}
 _institutional_cache: dict[str, list] = {}
+_short_interest_cache: dict[str, list] = {}
 
 
 @app.get("/")
@@ -129,6 +130,43 @@ def api_institutional_holdings():
             return jsonify({"error": f"Could not compute institutional holdings for '{ticker}': {exc}"}), 502
 
     return jsonify(_institutional_cache[ticker])
+
+
+@app.get("/api/short-interest")
+def api_short_interest():
+    ticker = request.args.get("ticker", "").strip().upper()
+    if not ticker:
+        return jsonify({"error": "ticker is required"}), 400
+
+    if ticker not in _short_interest_cache:
+        try:
+            # Nasdaq's own (undocumented, consumer-site) API — free, no auth,
+            # but only covers Nasdaq-listed tickers. Unsupported tickers
+            # (NYSE-listed, etc.) come back with data: null, not an error —
+            # treat that the same way, as "nothing to show" rather than fail.
+            resp = http_requests.get(
+                f"https://api.nasdaq.com/api/quote/{ticker}/short-interest",
+                params={"assetclass": "stocks"},
+                headers={"User-Agent": "Mozilla/5.0"},
+                timeout=10,
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+            table = (payload.get("data") or {}).get("shortInterestTable") or {}
+            rows = table.get("rows") or []
+            _short_interest_cache[ticker] = [
+                {
+                    "settlement_date": datetime.strptime(row["settlementDate"], "%m/%d/%Y").strftime("%Y-%m-%d"),
+                    "short_interest_shares": int(row["interest"].replace(",", "")),
+                    "avg_daily_volume": int(row["avgDailyShareVolume"].replace(",", "")),
+                    "days_to_cover": row["daysToCover"],
+                }
+                for row in rows
+            ]
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 502
+
+    return jsonify(_short_interest_cache[ticker])
 
 
 @app.get("/api/news")

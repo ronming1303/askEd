@@ -20,6 +20,11 @@ const NEWS_IDX = CATEGORIES.length + 1; // sentinel index for news entries
 const INSTITUTIONAL_CAT = { label: "Institutional ownership snapshot (13F aggregate)", short: "Ownership", color: "#3b5bdb" };
 const INSTITUTIONAL_IDX = CATEGORIES.length + 2; // sentinel index for institutional-ownership entries
 
+// Bi-monthly FINRA-reported short interest (via Nasdaq's public API) —
+// Nasdaq-listed tickers only; unsupported tickers just get an empty list.
+const SHORT_INTEREST_CAT = { label: "Short interest (bi-monthly)", short: "Short interest", color: "#d9480f" };
+const SHORT_INTEREST_IDX = CATEGORIES.length + 3; // sentinel index for short-interest entries
+
 function categorize(form) {
   for (const cat of CATEGORIES) {
     if (cat.match.test(form)) return cat;
@@ -233,12 +238,13 @@ async function loadTicker(ticker, days) {
   tab.fetchingFilings = true;
   syncTabIndicator(tab);
   try {
-    const [filingsRes, newsRes, pricesRes, latest10QRes, institutionalRes] = await Promise.all([
+    const [filingsRes, newsRes, pricesRes, latest10QRes, institutionalRes, shortInterestRes] = await Promise.all([
       fetch(`/api/filings?ticker=${encodeURIComponent(ticker)}&days=${encodeURIComponent(days)}`),
       fetch(`/api/news?ticker=${encodeURIComponent(ticker)}&days=${encodeURIComponent(days)}`).catch(() => null),
       fetch(`/api/prices?ticker=${encodeURIComponent(ticker)}&days=${encodeURIComponent(days)}`).catch(() => null),
       fetch(`/api/latest-filing?ticker=${encodeURIComponent(ticker)}&form=10-Q`).catch(() => null),
       fetch(`/api/institutional-holdings?ticker=${encodeURIComponent(ticker)}`).catch(() => null),
+      fetch(`/api/short-interest?ticker=${encodeURIComponent(ticker)}`).catch(() => null),
     ]);
     const data = await filingsRes.json();
     if (!filingsRes.ok) {
@@ -262,9 +268,14 @@ async function loadTicker(ticker, days) {
     if (institutionalRes && institutionalRes.ok) {
       try { institutional = await institutionalRes.json(); } catch {}
     }
+    let shortInterest = [];
+    if (shortInterestRes && shortInterestRes.ok) {
+      try { shortInterest = await shortInterestRes.json(); } catch {}
+    }
     tab.days = days;
     tab.priceData = Array.isArray(prices) ? prices : [];
     tab.institutionalData = Array.isArray(institutional) ? institutional : [];
+    tab.shortInterestData = Array.isArray(shortInterest) ? shortInterest : [];
     renderCompanyInfo(data, tab);
     renderTimeline(data.filings, news, tab);
     renderPriceChart(tab);
@@ -294,20 +305,22 @@ function renderTimeline(filings, news, tab) {
 
   const newsArr = news || [];
   const instArr = tab.institutionalData || [];
+  const shortArr = tab.shortInterestData || [];
 
-  if (!filings.length && !newsArr.length && !instArr.length) {
+  if (!filings.length && !newsArr.length && !instArr.length && !shortArr.length) {
     timelineEl.innerHTML = `<li class="empty">No filings match these criteria.</li>`;
     return;
   }
 
-  // Merge filings, news articles, and institutional-ownership snapshots then
-  // sort newest-first. Rows are evenly spaced by sequence rather than
-  // proportionally to real date gaps — filing dates cluster unevenly, and
-  // sequence-based spacing keeps every row legible.
+  // Merge filings, news articles, institutional-ownership snapshots, and
+  // short-interest readings then sort newest-first. Rows are evenly spaced
+  // by sequence rather than proportionally to real date gaps — filing dates
+  // cluster unevenly, and sequence-based spacing keeps every row legible.
   const allItems = [
     ...filings.map(f => ({ type: "filing", date: f.filing_date, data: f })),
     ...newsArr.map(a => ({ type: "news", date: a.date, data: a })),
     ...instArr.map(s => ({ type: "institutional", date: s.disclosed_date, data: s })),
+    ...shortArr.map(s => ({ type: "short_interest", date: s.settlement_date, data: s })),
   ].sort((a, b) => b.date.localeCompare(a.date));
 
   const pairs = [];
@@ -453,6 +466,47 @@ function renderTimeline(filings, news, tab) {
 
       timelineEl.appendChild(entry);
       pairs.push({ entry });
+    } else if (item.type === "short_interest") {
+      const si = item.data;
+
+      const entry = document.createElement("li");
+      entry.className = "entry";
+      entry.dataset.catIdx = SHORT_INTEREST_IDX;
+      entry.innerHTML = `
+        <div class="entry-row">
+          <div class="entry-date">${si.settlement_date}</div>
+          <div class="entry-spine"><span class="marker" style="background:${SHORT_INTEREST_CAT.color}"></span></div>
+          <div class="entry-card">
+            <span class="badge" style="background:${SHORT_INTEREST_CAT.color}">${SHORT_INTEREST_CAT.short}</span>
+            <span class="entry-desc">Short interest ${formatBigShares(si.short_interest_shares)} · ${si.days_to_cover.toFixed(1)} days to cover</span>
+          </div>
+        </div>
+        <div class="entry-details">
+          <div class="entry-details-clip">
+            <div class="entry-details-inner">
+              <div><span class="field">Settlement date</span>${si.settlement_date}</div>
+              <div><span class="field">Short interest</span>${si.short_interest_shares.toLocaleString()} shares</div>
+              <div><span class="field">Avg daily volume</span>${si.avg_daily_volume.toLocaleString()}</div>
+              <div><span class="field">Days to cover</span>${si.days_to_cover.toFixed(2)}</div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      entry.querySelector(".entry-card").addEventListener("click", () => {
+        if (expandedEntries.has(entry)) {
+          entry.classList.remove("expanded");
+          expandedEntries.delete(entry);
+        } else {
+          entry.classList.add("expanded");
+          expandedEntries.add(entry);
+        }
+      });
+      entry.addEventListener("mouseenter", () => highlightPriceDate(tab, si.settlement_date));
+      entry.addEventListener("mouseleave", () => clearPriceHighlight(tab));
+
+      timelineEl.appendChild(entry);
+      pairs.push({ entry });
     }
   }
 
@@ -475,6 +529,7 @@ function renderFilterBar(tab, pairs) {
     { ...OTHER, idx: OTHER_IDX },
     { ...NEWS_CAT, idx: NEWS_IDX },
     { ...INSTITUTIONAL_CAT, idx: INSTITUTIONAL_IDX },
+    { ...SHORT_INTEREST_CAT, idx: SHORT_INTEREST_IDX },
   ];
   for (const cat of allCats) {
     if (!present.has(cat.idx)) continue;
