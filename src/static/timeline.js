@@ -102,6 +102,13 @@ function newTab(ticker) {
           </div>
           <div class="ip-extra"></div>
         </div>
+        <div class="short-panel" hidden>
+          <div class="si-header">
+            <span class="si-label">Short Interest</span>
+            <span class="si-date"></span>
+          </div>
+          <div class="si-extra"></div>
+        </div>
       </aside>
     </div>
   `;
@@ -281,6 +288,7 @@ async function loadTicker(ticker, days) {
     renderPriceChart(tab);
     renderLatest10Q(tab, latest10Q);
     renderInstitutionalPanel(tab, tab.institutionalData);
+    renderShortInterestPanel(tab, tab.shortInterestData);
   } catch (err) {
     renderSearchError(err.message, err.suggestions);
     closeTab(tab.id);
@@ -1528,6 +1536,65 @@ function renderInstitutionalPanel(tab, snapshots) {
     <table class="ip-table">
       <thead>
         <tr><th>Qtr</th><th>Own%</th><th>10</th><th>20</th><th>50</th><th>100</th></tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+
+  newHeader.addEventListener("click", () => {
+    box.classList.toggle("expanded");
+  });
+}
+
+// Same idea as renderInstitutionalPanel, but bi-monthly (~24 points/year
+// instead of ~4) — the table gets its own scroll container rather than
+// growing the whole sidebar card to match.
+function renderShortInterestPanel(tab, snapshots) {
+  const box = tab.pricePanelEl.querySelector(".short-panel");
+  if (!snapshots || !snapshots.length) {
+    box.hidden = true;
+    return;
+  }
+
+  box.hidden = false;
+  tab.pricePanelEl.hidden = false;
+  box.querySelector(".si-date").textContent = snapshots[0].settlement_date;
+
+  const header = box.querySelector(".si-header");
+  const extra = box.querySelector(".si-extra");
+  // Replace any previously-bound listener (this can run again for the same
+  // tab when the user re-searches the same ticker).
+  const newHeader = header.cloneNode(true);
+  header.replaceWith(newHeader);
+
+  const deltaBadge = (delta, suffix, digits) => {
+    if (delta == null) return "";
+    const color = delta >= 0 ? "#2eaa55" : "#e0524d";
+    const arrow = delta >= 0 ? "▲" : "▼";
+    return `<br><span class="ip-delta" style="color:${color}">${arrow}${Math.abs(delta).toFixed(digits)}${suffix}</span>`;
+  };
+
+  // snapshots are newest-first, so the next array entry is the prior
+  // settlement date — that's what each delta compares against.
+  const rows = snapshots.map((s, i) => {
+    const prev = snapshots[i + 1];
+    const sharesDeltaPct = prev
+      ? (s.short_interest_shares - prev.short_interest_shares) / prev.short_interest_shares * 100
+      : null;
+    const coverDelta = prev ? s.days_to_cover - prev.days_to_cover : null;
+    return `
+      <tr>
+        <td class="ip-q">${s.settlement_date}</td>
+        <td class="ip-own">${formatBigShares(s.short_interest_shares)}${deltaBadge(sharesDeltaPct, "%", 1)}</td>
+        <td>${s.days_to_cover.toFixed(2)}${deltaBadge(coverDelta, "", 2)}</td>
+      </tr>
+    `;
+  }).join("");
+
+  extra.innerHTML = `
+    <table class="ip-table">
+      <thead>
+        <tr><th>Date</th><th>Short Int.</th><th>Days Cov.</th></tr>
       </thead>
       <tbody>${rows}</tbody>
     </table>

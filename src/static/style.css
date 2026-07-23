@@ -400,6 +400,51 @@ main {
 .ip-own { color: #3a4055; font-weight: 500; }
 .ip-delta { font-weight: 700; font-size: 10px; }
 
+.short-panel {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #e8eaf2;
+}
+.si-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+}
+.si-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1c1e2a;
+}
+.si-label::before {
+  content: "▸";
+  display: inline-block;
+  margin-right: 6px;
+  font-size: 10px;
+  color: #8a92aa;
+  transition: transform 0.15s;
+}
+.short-panel.expanded .si-label::before {
+  transform: rotate(90deg);
+}
+.si-date {
+  font-size: 11px;
+  color: #8a92aa;
+}
+.si-extra {
+  display: none;
+  margin-top: 10px;
+  overflow-x: auto;
+  /* ~24 bi-monthly rows/year — scroll within the card instead of growing
+     the whole sidebar to match. */
+  max-height: 220px;
+  overflow-y: auto;
+}
+.short-panel.expanded .si-extra {
+  display: block;
+}
+
 @media (max-width: 1000px) {
   .pane-layout {
     flex-direction: column;
