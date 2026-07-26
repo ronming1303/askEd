@@ -1665,9 +1665,13 @@ function renderPredictionMarketPanel(tab, rows) {
   const newHeader = header.cloneNode(true);
   header.replaceWith(newHeader);
 
+  const priceData = tab.priceData || [];
+  const currentPrice = priceData.length ? priceData[priceData.length - 1].close : null;
+  const currentPriceLabel = currentPrice != null ? `Current price: ${formatPrice(currentPrice)}` : "Current price";
+
   let sideSwitched = false;
   const rowsHtml = rows.map((r, i) => {
-    const divider = (r.side === "LOW" && !sideSwitched) ? (sideSwitched = true, `<div class="pm-divider">Current price</div>`) : "";
+    const divider = (r.side === "LOW" && !sideSwitched) ? (sideSwitched = true, `<div class="pm-divider">${currentPriceLabel}</div>`) : "";
     const pct = (r.yes_price * 100).toFixed(1);
     return `
       ${divider}
