@@ -1672,24 +1672,31 @@ function renderPredictionMarketPanel(tab, rows) {
   // HIGH and LOW are symmetric halves of the same distribution (odds of
   // touching a price above vs. below where it trades now) — one merged
   // list, direction shown per-row via arrow rather than splitting them
-  // apart with a divider.
+  // apart with a divider. Already-resolved strikes (yes_price pinned at 0
+  // or 1 — the price already touched there this month, or is now out of
+  // reach) are dimmed rather than dropped: still a useful reference for
+  // this month's actual traded range, just no longer a live forecast.
+  // Volume is shown per row since liquidity is uneven strike to strike —
+  // a probability with little size behind it is a much weaker signal.
   const rowsHtml = rows.map(r => {
     const pct = (r.yes_price * 100).toFixed(1);
     const up = r.side === "HIGH";
     const arrow = up ? "▲" : "▼";
     const arrowColor = up ? "#2eaa55" : "#e0524d";
+    const volLabel = r.volume > 0 ? formatMoney(r.volume) : "—";
     return `
-      <div class="pm-row">
+      <div class="pm-row${r.resolved ? " pm-row-resolved" : ""}">
         <span class="pm-arrow" style="color:${arrowColor}">${arrow}</span>
         <span class="pm-strike">$${r.strike.toLocaleString()}</span>
         <div class="pm-bar-track"><div class="pm-bar-fill" style="width:${pct}%; background:${arrowColor}"></div></div>
         <span class="pm-pct">${pct}%</span>
+        <span class="pm-vol">${volLabel}</span>
       </div>
     `;
   }).join("");
 
   extra.innerHTML = `
-    <div class="pm-note">Market-implied odds of ${escapeHtml(tab.ticker)} touching each price this month (▲ above, ▼ below) — not a directional call, just how far the market expects it could move.${currentPriceNote}</div>
+    <div class="pm-note">Market-implied odds of ${escapeHtml(tab.ticker)} touching each price this month (▲ above, ▼ below), with $ volume traded on that specific strike. Dimmed rows already resolved this month (price already reached, or now out of reach) — a reference point, not a live forecast.${currentPriceNote}</div>
     ${rowsHtml}
   `;
 

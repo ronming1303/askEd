@@ -589,10 +589,17 @@ main {
   background: #3b6ef0;
 }
 .pm-pct {
-  flex: 0 0 40px;
+  flex: 0 0 34px;
   text-align: right;
   color: #6a7188;
 }
+.pm-vol {
+  flex: 0 0 44px;
+  text-align: right;
+  color: #a0a8bc;
+  font-size: 10px;
+}
+.pm-row-resolved { opacity: 0.5; }
 
 @media (max-width: 1000px) {
   .pane-layout {

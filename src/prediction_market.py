@@ -28,8 +28,13 @@ def get_price_probabilities(ticker: str, company_name: str) -> list[dict]:
     normal for most tickers, not a failure.
 
     Each returned dict: {"side": "HIGH"|"LOW", "strike": float,
-    "yes_price": float (0-1, the market-implied probability)}, sorted by
-    strike descending.
+    "yes_price": float (0-1, the market-implied probability), "resolved":
+    bool (already certain either way — the price already touched this
+    level this month, or it's now out of reach — still a useful reference
+    point, just no longer a live forecast), "volume": float (total $ traded
+    on this specific strike so far — this series' liquidity is uneven
+    strike to strike, so a near-0-volume reading is a much weaker signal
+    than one with real size behind it)}, sorted by strike descending.
     """
     resp = requests.get(
         SEARCH_URL,
@@ -80,18 +85,20 @@ def get_price_probabilities(ticker: str, company_name: str) -> list[dict]:
         except (KeyError, ValueError, IndexError, json.JSONDecodeError):
             continue
         # yes_price at (or essentially at) 0 or 1 means the market considers
-        # this strike already resolved, not a live prediction — a HIGH
-        # strike the price already traded through this month prices at 1.0
-        # (it already happened; there's no more uncertainty to show), and
-        # symmetrically a strike now out of reach with days left prices at
-        # 0.0. Keep only the strikes that are still genuinely undecided.
-        if yes_price <= 0.001 or yes_price >= 0.999:
-            continue
+        # this strike already resolved — a HIGH strike the price already
+        # traded through this month prices at 1.0 (it already happened),
+        # and symmetrically a strike now out of reach prices at 0.0. Still
+        # worth showing (it's the actual range traded so far this month),
+        # just flagged so the UI can visually separate "already happened"
+        # from "still a live forecast".
+        resolved = yes_price <= 0.001 or yes_price >= 0.999
 
         results.append({
             "side": match.group(1),
             "strike": float(match.group(2).replace(",", "")),
             "yes_price": yes_price,
+            "resolved": resolved,
+            "volume": float(market.get("volumeNum") or 0),
         })
 
     results.sort(key=lambda r: r["strike"], reverse=True)
