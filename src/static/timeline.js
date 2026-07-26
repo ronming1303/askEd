@@ -133,6 +133,13 @@ function newTab(ticker) {
             </div>
           </div>
         </div>
+        <div class="pm-panel" hidden>
+          <div class="pm-header">
+            <span class="pm-label">Prediction Market (Polymarket)</span>
+            <span class="pm-date"></span>
+          </div>
+          <div class="pm-extra"></div>
+        </div>
       </aside>
     </div>
   `;
@@ -269,13 +276,14 @@ async function loadTicker(ticker, days) {
   tab.fetchingFilings = true;
   syncTabIndicator(tab);
   try {
-    const [filingsRes, newsRes, pricesRes, latest10QRes, institutionalRes, shortInterestRes] = await Promise.all([
+    const [filingsRes, newsRes, pricesRes, latest10QRes, institutionalRes, shortInterestRes, predictionMarketRes] = await Promise.all([
       fetch(`/api/filings?ticker=${encodeURIComponent(ticker)}&days=${encodeURIComponent(days)}`),
       fetch(`/api/news?ticker=${encodeURIComponent(ticker)}&days=${encodeURIComponent(days)}`).catch(() => null),
       fetch(`/api/prices?ticker=${encodeURIComponent(ticker)}&days=${encodeURIComponent(days)}`).catch(() => null),
       fetch(`/api/latest-filing?ticker=${encodeURIComponent(ticker)}&form=10-Q`).catch(() => null),
       fetch(`/api/institutional-holdings?ticker=${encodeURIComponent(ticker)}`).catch(() => null),
       fetch(`/api/short-interest?ticker=${encodeURIComponent(ticker)}`).catch(() => null),
+      fetch(`/api/prediction-market?ticker=${encodeURIComponent(ticker)}`).catch(() => null),
     ]);
     const data = await filingsRes.json();
     if (!filingsRes.ok) {
@@ -303,10 +311,15 @@ async function loadTicker(ticker, days) {
     if (shortInterestRes && shortInterestRes.ok) {
       try { shortInterest = await shortInterestRes.json(); } catch {}
     }
+    let predictionMarket = [];
+    if (predictionMarketRes && predictionMarketRes.ok) {
+      try { predictionMarket = await predictionMarketRes.json(); } catch {}
+    }
     tab.days = days;
     tab.priceData = Array.isArray(prices) ? prices : [];
     tab.institutionalData = Array.isArray(institutional) ? institutional : [];
     tab.shortInterestData = Array.isArray(shortInterest) ? shortInterest : [];
+    tab.predictionMarketData = Array.isArray(predictionMarket) ? predictionMarket : [];
     renderCompanyInfo(data, tab);
     renderTimeline(data.filings, news, tab);
     renderPriceChart(tab);
@@ -314,6 +327,7 @@ async function loadTicker(ticker, days) {
     renderLatest10Q(tab, latest10Q);
     renderInstitutionalPanel(tab, tab.institutionalData);
     renderShortInterestPanel(tab, tab.shortInterestData);
+    renderPredictionMarketPanel(tab, tab.predictionMarketData);
   } catch (err) {
     renderSearchError(err.message, err.suggestions);
     closeTab(tab.id);
@@ -1623,6 +1637,51 @@ function renderShortInterestPanel(tab, snapshots) {
       </thead>
       <tbody>${rows}</tbody>
     </table>
+  `;
+
+  newHeader.addEventListener("click", () => {
+    box.classList.toggle("expanded");
+  });
+}
+
+// Coverage is spotty by design (see prediction_market.py) — most tickers
+// will get [] back, which is the normal/expected case, not an error.
+// Entries arrive sorted by strike descending (HIGH strikes above the
+// current price, then LOW strikes below), which already reads like a rough
+// probability distribution once laid out top to bottom.
+function renderPredictionMarketPanel(tab, rows) {
+  const box = tab.pricePanelEl.querySelector(".pm-panel");
+  if (!rows || !rows.length) {
+    box.hidden = true;
+    return;
+  }
+
+  box.hidden = false;
+  tab.pricePanelEl.hidden = false;
+  box.querySelector(".pm-date").textContent = "this month";
+
+  const header = box.querySelector(".pm-header");
+  const extra = box.querySelector(".pm-extra");
+  const newHeader = header.cloneNode(true);
+  header.replaceWith(newHeader);
+
+  let sideSwitched = false;
+  const rowsHtml = rows.map((r, i) => {
+    const divider = (r.side === "LOW" && !sideSwitched) ? (sideSwitched = true, `<div class="pm-divider">Current price</div>`) : "";
+    const pct = (r.yes_price * 100).toFixed(1);
+    return `
+      ${divider}
+      <div class="pm-row">
+        <span class="pm-strike">$${r.strike.toLocaleString()}</span>
+        <div class="pm-bar-track"><div class="pm-bar-fill" style="width:${pct}%"></div></div>
+        <span class="pm-pct">${pct}%</span>
+      </div>
+    `;
+  }).join("");
+
+  extra.innerHTML = `
+    <div class="pm-note">Market-implied odds of ${escapeHtml(tab.ticker)} touching each price this month — not a directional call, just how far the market expects it could move.</div>
+    ${rowsHtml}
   `;
 
   newHeader.addEventListener("click", () => {

@@ -513,6 +513,93 @@ main {
   display: block;
 }
 
+.pm-panel {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #e8eaf2;
+}
+.pm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+}
+.pm-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1c1e2a;
+}
+.pm-label::before {
+  content: "▸";
+  display: inline-block;
+  margin-right: 6px;
+  font-size: 10px;
+  color: #8a92aa;
+  transition: transform 0.15s;
+}
+.pm-panel.expanded .pm-label::before {
+  transform: rotate(90deg);
+}
+.pm-date {
+  font-size: 11px;
+  color: #8a92aa;
+}
+.pm-extra {
+  display: none;
+  margin-top: 10px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.pm-panel.expanded .pm-extra {
+  display: block;
+}
+.pm-note {
+  font-size: 11px;
+  color: #a0a8bc;
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+.pm-divider {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #8a92aa;
+  text-align: center;
+  margin: 6px 0;
+  border-top: 1px dashed #dee2e6;
+  padding-top: 4px;
+}
+.pm-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+  font-size: 11px;
+}
+.pm-strike {
+  flex: 0 0 48px;
+  color: #3a4055;
+  font-weight: 600;
+}
+.pm-bar-track {
+  flex: 1 1 auto;
+  height: 8px;
+  border-radius: 4px;
+  background: #f0f1f6;
+  overflow: hidden;
+}
+.pm-bar-fill {
+  height: 100%;
+  background: #3b6ef0;
+}
+.pm-pct {
+  flex: 0 0 40px;
+  text-align: right;
+  color: #6a7188;
+}
+
 @media (max-width: 1000px) {
   .pane-layout {
     flex-direction: column;

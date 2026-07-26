@@ -12,10 +12,11 @@ from pathlib import Path
 import requests as http_requests
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
-from edgar import CompanyNotFoundError, set_identity
+from edgar import Company, CompanyNotFoundError, set_identity
 
 from edgar_filings import fetch_filing_detail, fetch_filings, fetch_latest_filing, fetch_sale_summary
 from institutional_holdings import get_snapshots_for_ticker
+from prediction_market import get_price_probabilities
 from technical_indicators import compute_indicators
 
 load_dotenv(Path(__file__).parent.parent / ".env")
@@ -37,6 +38,7 @@ _price_cache: dict[str, list] = {}
 _latest_filing_cache: dict[str, dict | None] = {}
 _institutional_cache: dict[str, list] = {}
 _short_interest_cache: dict[str, list] = {}
+_prediction_market_cache: dict[str, list] = {}
 
 
 @app.get("/")
@@ -168,6 +170,24 @@ def api_short_interest():
             return jsonify({"error": str(exc)}), 502
 
     return jsonify(_short_interest_cache[ticker])
+
+
+@app.get("/api/prediction-market")
+def api_prediction_market():
+    ticker = request.args.get("ticker", "").strip().upper()
+    if not ticker:
+        return jsonify({"error": "ticker is required"}), 400
+
+    if ticker not in _prediction_market_cache:
+        try:
+            company_name = Company(ticker).name
+            _prediction_market_cache[ticker] = get_price_probabilities(ticker, company_name)
+        except CompanyNotFoundError:
+            _prediction_market_cache[ticker] = []
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 502
+
+    return jsonify(_prediction_market_cache[ticker])
 
 
 @app.get("/api/news")
