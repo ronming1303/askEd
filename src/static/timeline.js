@@ -1667,24 +1667,29 @@ function renderPredictionMarketPanel(tab, rows) {
 
   const priceData = tab.priceData || [];
   const currentPrice = priceData.length ? priceData[priceData.length - 1].close : null;
-  const currentPriceLabel = currentPrice != null ? `Current price: ${formatPrice(currentPrice)}` : "Current price";
+  const currentPriceNote = currentPrice != null ? ` Currently ${formatPrice(currentPrice)}.` : "";
 
-  let sideSwitched = false;
-  const rowsHtml = rows.map((r, i) => {
-    const divider = (r.side === "LOW" && !sideSwitched) ? (sideSwitched = true, `<div class="pm-divider">${currentPriceLabel}</div>`) : "";
+  // HIGH and LOW are symmetric halves of the same distribution (odds of
+  // touching a price above vs. below where it trades now) — one merged
+  // list, direction shown per-row via arrow rather than splitting them
+  // apart with a divider.
+  const rowsHtml = rows.map(r => {
     const pct = (r.yes_price * 100).toFixed(1);
+    const up = r.side === "HIGH";
+    const arrow = up ? "▲" : "▼";
+    const arrowColor = up ? "#2eaa55" : "#e0524d";
     return `
-      ${divider}
       <div class="pm-row">
+        <span class="pm-arrow" style="color:${arrowColor}">${arrow}</span>
         <span class="pm-strike">$${r.strike.toLocaleString()}</span>
-        <div class="pm-bar-track"><div class="pm-bar-fill" style="width:${pct}%"></div></div>
+        <div class="pm-bar-track"><div class="pm-bar-fill" style="width:${pct}%; background:${arrowColor}"></div></div>
         <span class="pm-pct">${pct}%</span>
       </div>
     `;
   }).join("");
 
   extra.innerHTML = `
-    <div class="pm-note">Market-implied odds of ${escapeHtml(tab.ticker)} touching each price this month — not a directional call, just how far the market expects it could move.</div>
+    <div class="pm-note">Market-implied odds of ${escapeHtml(tab.ticker)} touching each price this month (▲ above, ▼ below) — not a directional call, just how far the market expects it could move.${currentPriceNote}</div>
     ${rowsHtml}
   `;
 

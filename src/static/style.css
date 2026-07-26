@@ -560,23 +560,17 @@ main {
   margin-bottom: 8px;
   line-height: 1.4;
 }
-.pm-divider {
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-  color: #8a92aa;
-  text-align: center;
-  margin: 6px 0;
-  border-top: 1px dashed #dee2e6;
-  padding-top: 4px;
-}
 .pm-row {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 2px 0;
   font-size: 11px;
+}
+.pm-arrow {
+  flex: 0 0 12px;
+  font-size: 9px;
+  text-align: center;
 }
 .pm-strike {
   flex: 0 0 48px;
