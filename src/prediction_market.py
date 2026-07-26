@@ -79,6 +79,15 @@ def get_price_probabilities(ticker: str, company_name: str) -> list[dict]:
             yes_price = float(prices[outcomes.index("Yes")])
         except (KeyError, ValueError, IndexError, json.JSONDecodeError):
             continue
+        # yes_price at (or essentially at) 0 or 1 means the market considers
+        # this strike already resolved, not a live prediction — a HIGH
+        # strike the price already traded through this month prices at 1.0
+        # (it already happened; there's no more uncertainty to show), and
+        # symmetrically a strike now out of reach with days left prices at
+        # 0.0. Keep only the strikes that are still genuinely undecided.
+        if yes_price <= 0.001 or yes_price >= 0.999:
+            continue
+
         results.append({
             "side": match.group(1),
             "strike": float(match.group(2).replace(",", "")),
