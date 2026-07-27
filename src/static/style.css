@@ -658,13 +658,14 @@ main {
   line-height: 1.4;
 }
 .chain-rows {
-  max-height: 220px;
+  max-height: 240px;
   overflow-y: auto;
 }
 .chain-row {
-  padding: 4px 0;
+  padding: 6px 0;
   border-bottom: 1px solid #f0f1f6;
-  font-size: 10.5px;
+  font-size: 11px;
+  line-height: 1.6;
 }
 .chain-row:last-child { border-bottom: none; }
 .chain-strike {

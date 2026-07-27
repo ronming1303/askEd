@@ -107,7 +107,11 @@ def get_option_chain(ticker: str) -> dict | None:
             "fromdate": today.isoformat(),
             "todate": (today + timedelta(days=14)).isoformat(),
             "callput": "callput",
-            "money": "all",
+            # "at" pre-filters server-side to near-the-money strikes only
+            # (roughly ±10% of the current price for AAPL, verified) —
+            # "all" pulls the full chain out to barely-traded deep
+            # ITM/OTM strikes that just clutter the panel.
+            "money": "at",
             "type": "all",
         },
         headers={"User-Agent": USER_AGENT, "Accept": "application/json"},

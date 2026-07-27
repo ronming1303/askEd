@@ -1775,16 +1775,16 @@ function renderImpliedVolatilityPanel(tab, iv) {
     return;
   }
 
-  chainLabel.textContent = `Option chain (Nasdaq), ${iv.chain_expiration || "nearest"} expiration`;
+  chainLabel.textContent = `Option chain (Nasdaq), ${iv.chain_expiration || "nearest"} expiration — bid×ask · vol/OI`;
 
-  const fmtCount = (n) => n == null ? "—" : (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : `${Math.round(n)}`);
-  const fmtBidAsk = (bid, ask) => `${bid != null ? bid.toFixed(2) : "—"}×${ask != null ? ask.toFixed(2) : "—"}`;
+  const fmtCount = (n) => n == null ? "–" : (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : `${Math.round(n)}`);
+  const fmtBidAsk = (bid, ask) => `${bid != null ? bid.toFixed(2) : "–"}×${ask != null ? ask.toFixed(2) : "–"}`;
 
   chainRows.innerHTML = chain.map(r => `
     <div class="chain-row">
       <div class="chain-strike">$${r.strike.toLocaleString()}</div>
-      <div class="chain-side"><span class="chain-tag chain-tag-call">C</span>${fmtBidAsk(r.call_bid, r.call_ask)} <span class="chain-meta">Vol ${fmtCount(r.call_volume)} · OI ${fmtCount(r.call_oi)}</span></div>
-      <div class="chain-side"><span class="chain-tag chain-tag-put">P</span>${fmtBidAsk(r.put_bid, r.put_ask)} <span class="chain-meta">Vol ${fmtCount(r.put_volume)} · OI ${fmtCount(r.put_oi)}</span></div>
+      <div class="chain-side"><span class="chain-tag chain-tag-call">C</span>${fmtBidAsk(r.call_bid, r.call_ask)} <span class="chain-meta">${fmtCount(r.call_volume)}/${fmtCount(r.call_oi)}</span></div>
+      <div class="chain-side"><span class="chain-tag chain-tag-put">P</span>${fmtBidAsk(r.put_bid, r.put_ask)} <span class="chain-meta">${fmtCount(r.put_volume)}/${fmtCount(r.put_oi)}</span></div>
     </div>
   `).join("");
 }
