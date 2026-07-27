@@ -148,6 +148,8 @@ function newTab(ticker) {
           <div class="iv-extra">
             <div class="iv-smile-label"></div>
             <svg class="iv-smile-chart" viewBox="0 0 260 72" preserveAspectRatio="none"></svg>
+            <div class="chain-label"></div>
+            <div class="chain-rows"></div>
           </div>
         </div>
       </aside>
@@ -1731,7 +1733,8 @@ function renderPredictionMarketPanel(tab, rows) {
 // caveat as the prediction-market panel).
 function renderImpliedVolatilityPanel(tab, iv) {
   const box = tab.pricePanelEl.querySelector(".iv-panel");
-  if (!iv || iv.iv30 == null) {
+  const chain = (iv && iv.chain) || [];
+  if (!iv || (iv.iv30 == null && !chain.length)) {
     box.hidden = true;
     return;
   }
@@ -1743,7 +1746,7 @@ function renderImpliedVolatilityPanel(tab, iv) {
   const changeHtml = (change != null && change !== 0)
     ? ` <span style="color:${change >= 0 ? "#2eaa55" : "#e0524d"}">${change >= 0 ? "▲" : "▼"}${Math.abs(change).toFixed(1)}</span>`
     : "";
-  box.querySelector(".iv-date").innerHTML = `${iv.iv30}%${changeHtml}`;
+  box.querySelector(".iv-date").innerHTML = iv.iv30 != null ? `${iv.iv30}%${changeHtml}` : "";
 
   const header = box.querySelector(".iv-header");
   const newHeader = header.cloneNode(true);
@@ -1752,15 +1755,41 @@ function renderImpliedVolatilityPanel(tab, iv) {
     box.classList.toggle("expanded");
   });
 
+  // --- IV smile chart (CBOE) ---
   const smile = iv.smile || [];
   const label = box.querySelector(".iv-smile-label");
   const svg = box.querySelector(".iv-smile-chart");
   if (smile.length < 2) {
-    label.textContent = "Not enough listed strikes for a smile chart";
+    label.textContent = iv.iv30 != null ? "Not enough listed strikes for a smile chart" : "";
     svg.innerHTML = "";
+  } else {
+    renderIvSmile(svg, label, iv, smile);
+  }
+
+  // --- Option chain (Nasdaq): bid/ask/volume/open interest per strike ---
+  const chainLabel = box.querySelector(".chain-label");
+  const chainRows = box.querySelector(".chain-rows");
+  if (!chain.length) {
+    chainLabel.textContent = "";
+    chainRows.innerHTML = "";
     return;
   }
 
+  chainLabel.textContent = `Option chain (Nasdaq), ${iv.chain_expiration || "nearest"} expiration`;
+
+  const fmtCount = (n) => n == null ? "—" : (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : `${Math.round(n)}`);
+  const fmtBidAsk = (bid, ask) => `${bid != null ? bid.toFixed(2) : "—"}×${ask != null ? ask.toFixed(2) : "—"}`;
+
+  chainRows.innerHTML = chain.map(r => `
+    <div class="chain-row">
+      <div class="chain-strike">$${r.strike.toLocaleString()}</div>
+      <div class="chain-side"><span class="chain-tag chain-tag-call">C</span>${fmtBidAsk(r.call_bid, r.call_ask)} <span class="chain-meta">Vol ${fmtCount(r.call_volume)} · OI ${fmtCount(r.call_oi)}</span></div>
+      <div class="chain-side"><span class="chain-tag chain-tag-put">P</span>${fmtBidAsk(r.put_bid, r.put_ask)} <span class="chain-meta">Vol ${fmtCount(r.put_volume)} · OI ${fmtCount(r.put_oi)}</span></div>
+    </div>
+  `).join("");
+}
+
+function renderIvSmile(svg, label, iv, smile) {
   label.textContent = `IV by strike, ${iv.expiration || "nearest"} expiration (blue = calls, orange = puts)`;
 
   // x is scaled by the actual strike price, not by rank/index — real

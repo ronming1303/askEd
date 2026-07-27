@@ -16,7 +16,7 @@ from edgar import Company, CompanyNotFoundError, set_identity
 
 from edgar_filings import fetch_filing_detail, fetch_filings, fetch_latest_filing, fetch_sale_summary
 from institutional_holdings import get_snapshots_for_ticker
-from options_data import get_implied_volatility
+from options_data import get_implied_volatility, get_option_chain
 from prediction_market import get_price_probabilities
 from technical_indicators import compute_indicators
 
@@ -199,10 +199,22 @@ def api_options_iv():
         return jsonify({"error": "ticker is required"}), 400
 
     if ticker not in _options_iv_cache:
+        # CBOE (IV) and Nasdaq (bid/ask/volume/open interest) are two
+        # independent feeds merged into one response — one failing or
+        # having no coverage shouldn't take down the other.
         try:
-            _options_iv_cache[ticker] = get_implied_volatility(ticker)
-        except Exception as exc:
-            return jsonify({"error": str(exc)}), 502
+            result = get_implied_volatility(ticker)
+        except Exception:
+            result = None
+        try:
+            chain = get_option_chain(ticker)
+        except Exception:
+            chain = None
+        if chain:
+            result = result or {}
+            result["chain"] = chain["chain"]
+            result["chain_expiration"] = chain["expiration"]
+        _options_iv_cache[ticker] = result
 
     return jsonify(_options_iv_cache[ticker])
 
