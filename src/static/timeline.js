@@ -1763,33 +1763,32 @@ function renderImpliedVolatilityPanel(tab, iv) {
 
   label.textContent = `IV by strike, ${iv.expiration || "nearest"} expiration (blue = calls, orange = puts)`;
 
-  const W = 260, H = 60, n = smile.length;
+  // x is scaled by the actual strike price, not by rank/index — real
+  // strike spacing is uneven (e.g. $2.50 apart near the money, $20-25
+  // apart out at the wings), and plotting by index would compress those
+  // wide gaps down to the same width as the tight ones, distorting the
+  // skew's actual shape.
+  const W = 260, H = 60;
   const allIv = smile.flatMap(r => [r.call_iv, r.put_iv]).filter(v => v != null);
   const min = Math.min(...allIv), max = Math.max(...allIv);
   const range = (max - min) || 1;
-  const xFor = (i) => (i / (n - 1)) * W;
+  const strikeMin = smile[0].strike, strikeMax = smile[smile.length - 1].strike;
+  const strikeRange = (strikeMax - strikeMin) || 1;
+  const xFor = (strike) => ((strike - strikeMin) / strikeRange) * W;
   const yFor = (v) => H - ((v - min) / range) * H;
 
   const pathFor = (key) => {
     const pts = [];
-    smile.forEach((r, i) => {
+    smile.forEach((r) => {
       if (r[key] == null) return;
-      pts.push({ x: xFor(i), y: yFor(r[key]) });
+      pts.push({ x: xFor(r.strike), y: yFor(r[key]) });
     });
     return pts.map((p, idx) => `${idx === 0 ? "M" : "L"} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(" ");
   };
 
-  // Vertical reference line at whichever listed strike sits closest to the
-  // current price, so the skew's shape is easy to read against it.
-  let curX = null;
-  if (iv.current_price != null) {
-    let closestIdx = 0, closestDist = Infinity;
-    smile.forEach((r, i) => {
-      const d = Math.abs(r.strike - iv.current_price);
-      if (d < closestDist) { closestDist = d; closestIdx = i; }
-    });
-    curX = xFor(closestIdx);
-  }
+  // Vertical reference line at the actual current price (not just the
+  // nearest listed strike), placed on the same value-proportional scale.
+  const curX = iv.current_price != null ? xFor(iv.current_price) : null;
 
   svg.innerHTML = `
     ${curX != null ? `<line x1="${curX.toFixed(2)}" y1="0" x2="${curX.toFixed(2)}" y2="${H}" stroke="#dee2e6" stroke-width="1" stroke-dasharray="3,2" />` : ""}
