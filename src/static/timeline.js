@@ -147,7 +147,7 @@ function newTab(ticker) {
           </div>
           <div class="iv-extra">
             <div class="iv-smile-label"></div>
-            <svg class="iv-smile-chart" viewBox="0 0 260 60" preserveAspectRatio="none"></svg>
+            <svg class="iv-smile-chart" viewBox="0 0 260 72" preserveAspectRatio="none"></svg>
           </div>
         </div>
       </aside>
@@ -1790,8 +1790,21 @@ function renderImpliedVolatilityPanel(tab, iv) {
   // nearest listed strike), placed on the same value-proportional scale.
   const curX = iv.current_price != null ? xFor(iv.current_price) : null;
 
+  // X-axis tick labels — a handful of evenly-spaced strikes (not every
+  // listed one, which would overlap at this width) so it's clear which
+  // dollar level each part of the curve belongs to.
+  const TICKS = 4;
+  const axisY = H + 10;
+  const ticksHtml = Array.from({ length: TICKS }, (_, i) => strikeMin + (strikeRange * i) / (TICKS - 1))
+    .map((strike, i) => {
+      const x = xFor(strike);
+      const anchor = i === 0 ? "start" : (i === TICKS - 1 ? "end" : "middle");
+      return `<text x="${x.toFixed(2)}" y="${axisY}" font-size="7" fill="#a0a8bc" text-anchor="${anchor}">$${Math.round(strike)}</text>`;
+    }).join("");
+
   svg.innerHTML = `
     ${curX != null ? `<line x1="${curX.toFixed(2)}" y1="0" x2="${curX.toFixed(2)}" y2="${H}" stroke="#dee2e6" stroke-width="1" stroke-dasharray="3,2" />` : ""}
+    ${ticksHtml}
     <path d="${pathFor("call_iv")}" fill="none" stroke="#3b6ef0" stroke-width="1.5" />
     <path d="${pathFor("put_iv")}" fill="none" stroke="#f76707" stroke-width="1.5" />
   `;
