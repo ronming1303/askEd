@@ -140,6 +140,16 @@ function newTab(ticker) {
           </div>
           <div class="pm-extra"></div>
         </div>
+        <div class="iv-panel" hidden>
+          <div class="iv-header">
+            <span class="iv-label">Implied Volatility (Options)</span>
+            <span class="iv-date"></span>
+          </div>
+          <div class="iv-extra">
+            <div class="iv-smile-label"></div>
+            <svg class="iv-smile-chart" viewBox="0 0 260 60" preserveAspectRatio="none"></svg>
+          </div>
+        </div>
       </aside>
     </div>
   `;
@@ -276,7 +286,7 @@ async function loadTicker(ticker, days) {
   tab.fetchingFilings = true;
   syncTabIndicator(tab);
   try {
-    const [filingsRes, newsRes, pricesRes, latest10QRes, institutionalRes, shortInterestRes, predictionMarketRes] = await Promise.all([
+    const [filingsRes, newsRes, pricesRes, latest10QRes, institutionalRes, shortInterestRes, predictionMarketRes, optionsIvRes] = await Promise.all([
       fetch(`/api/filings?ticker=${encodeURIComponent(ticker)}&days=${encodeURIComponent(days)}`),
       fetch(`/api/news?ticker=${encodeURIComponent(ticker)}&days=${encodeURIComponent(days)}`).catch(() => null),
       fetch(`/api/prices?ticker=${encodeURIComponent(ticker)}&days=${encodeURIComponent(days)}`).catch(() => null),
@@ -284,6 +294,7 @@ async function loadTicker(ticker, days) {
       fetch(`/api/institutional-holdings?ticker=${encodeURIComponent(ticker)}`).catch(() => null),
       fetch(`/api/short-interest?ticker=${encodeURIComponent(ticker)}`).catch(() => null),
       fetch(`/api/prediction-market?ticker=${encodeURIComponent(ticker)}`).catch(() => null),
+      fetch(`/api/options-iv?ticker=${encodeURIComponent(ticker)}`).catch(() => null),
     ]);
     const data = await filingsRes.json();
     if (!filingsRes.ok) {
@@ -315,11 +326,16 @@ async function loadTicker(ticker, days) {
     if (predictionMarketRes && predictionMarketRes.ok) {
       try { predictionMarket = await predictionMarketRes.json(); } catch {}
     }
+    let optionsIv = null;
+    if (optionsIvRes && optionsIvRes.ok) {
+      try { optionsIv = await optionsIvRes.json(); } catch {}
+    }
     tab.days = days;
     tab.priceData = Array.isArray(prices) ? prices : [];
     tab.institutionalData = Array.isArray(institutional) ? institutional : [];
     tab.shortInterestData = Array.isArray(shortInterest) ? shortInterest : [];
     tab.predictionMarketData = Array.isArray(predictionMarket) ? predictionMarket : [];
+    tab.optionsIvData = optionsIv;
     renderCompanyInfo(data, tab);
     renderTimeline(data.filings, news, tab);
     renderPriceChart(tab);
@@ -328,6 +344,7 @@ async function loadTicker(ticker, days) {
     renderInstitutionalPanel(tab, tab.institutionalData);
     renderShortInterestPanel(tab, tab.shortInterestData);
     renderPredictionMarketPanel(tab, tab.predictionMarketData);
+    renderImpliedVolatilityPanel(tab, tab.optionsIvData);
   } catch (err) {
     renderSearchError(err.message, err.suggestions);
     closeTab(tab.id);
@@ -1703,6 +1720,82 @@ function renderPredictionMarketPanel(tab, rows) {
   newHeader.addEventListener("click", () => {
     box.classList.toggle("expanded");
   });
+}
+
+// iv30 (CBOE's own ~30-calendar-day constant-maturity implied volatility,
+// VIX-style) is the headline number. The smile chart below it is IV by
+// strike for whichever expiration happens to be nearest — a different,
+// shorter maturity than iv30, not directly comparable to it, just useful
+// to see the skew (OTM puts usually price richer than calls — that's
+// crash-protection demand, not a bearish "call", same non-directional
+// caveat as the prediction-market panel).
+function renderImpliedVolatilityPanel(tab, iv) {
+  const box = tab.pricePanelEl.querySelector(".iv-panel");
+  if (!iv || iv.iv30 == null) {
+    box.hidden = true;
+    return;
+  }
+
+  box.hidden = false;
+  tab.pricePanelEl.hidden = false;
+
+  const change = iv.iv30_change;
+  const changeHtml = (change != null && change !== 0)
+    ? ` <span style="color:${change >= 0 ? "#2eaa55" : "#e0524d"}">${change >= 0 ? "▲" : "▼"}${Math.abs(change).toFixed(1)}</span>`
+    : "";
+  box.querySelector(".iv-date").innerHTML = `${iv.iv30}%${changeHtml}`;
+
+  const header = box.querySelector(".iv-header");
+  const newHeader = header.cloneNode(true);
+  header.replaceWith(newHeader);
+  newHeader.addEventListener("click", () => {
+    box.classList.toggle("expanded");
+  });
+
+  const smile = iv.smile || [];
+  const label = box.querySelector(".iv-smile-label");
+  const svg = box.querySelector(".iv-smile-chart");
+  if (smile.length < 2) {
+    label.textContent = "Not enough listed strikes for a smile chart";
+    svg.innerHTML = "";
+    return;
+  }
+
+  label.textContent = `IV by strike, ${iv.expiration || "nearest"} expiration (blue = calls, orange = puts)`;
+
+  const W = 260, H = 60, n = smile.length;
+  const allIv = smile.flatMap(r => [r.call_iv, r.put_iv]).filter(v => v != null);
+  const min = Math.min(...allIv), max = Math.max(...allIv);
+  const range = (max - min) || 1;
+  const xFor = (i) => (i / (n - 1)) * W;
+  const yFor = (v) => H - ((v - min) / range) * H;
+
+  const pathFor = (key) => {
+    const pts = [];
+    smile.forEach((r, i) => {
+      if (r[key] == null) return;
+      pts.push({ x: xFor(i), y: yFor(r[key]) });
+    });
+    return pts.map((p, idx) => `${idx === 0 ? "M" : "L"} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(" ");
+  };
+
+  // Vertical reference line at whichever listed strike sits closest to the
+  // current price, so the skew's shape is easy to read against it.
+  let curX = null;
+  if (iv.current_price != null) {
+    let closestIdx = 0, closestDist = Infinity;
+    smile.forEach((r, i) => {
+      const d = Math.abs(r.strike - iv.current_price);
+      if (d < closestDist) { closestDist = d; closestIdx = i; }
+    });
+    curX = xFor(closestIdx);
+  }
+
+  svg.innerHTML = `
+    ${curX != null ? `<line x1="${curX.toFixed(2)}" y1="0" x2="${curX.toFixed(2)}" y2="${H}" stroke="#dee2e6" stroke-width="1" stroke-dasharray="3,2" />` : ""}
+    <path d="${pathFor("call_iv")}" fill="none" stroke="#3b6ef0" stroke-width="1.5" />
+    <path d="${pathFor("put_iv")}" fill="none" stroke="#f76707" stroke-width="1.5" />
+  `;
 }
 
 // Unlike the panels above, this reads tab.priceData directly — no separate

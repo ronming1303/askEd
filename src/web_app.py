@@ -16,6 +16,7 @@ from edgar import Company, CompanyNotFoundError, set_identity
 
 from edgar_filings import fetch_filing_detail, fetch_filings, fetch_latest_filing, fetch_sale_summary
 from institutional_holdings import get_snapshots_for_ticker
+from options_data import get_implied_volatility
 from prediction_market import get_price_probabilities
 from technical_indicators import compute_indicators
 
@@ -39,6 +40,7 @@ _latest_filing_cache: dict[str, dict | None] = {}
 _institutional_cache: dict[str, list] = {}
 _short_interest_cache: dict[str, list] = {}
 _prediction_market_cache: dict[str, list] = {}
+_options_iv_cache: dict[str, dict | None] = {}
 
 
 @app.get("/")
@@ -188,6 +190,21 @@ def api_prediction_market():
             return jsonify({"error": str(exc)}), 502
 
     return jsonify(_prediction_market_cache[ticker])
+
+
+@app.get("/api/options-iv")
+def api_options_iv():
+    ticker = request.args.get("ticker", "").strip().upper()
+    if not ticker:
+        return jsonify({"error": "ticker is required"}), 400
+
+    if ticker not in _options_iv_cache:
+        try:
+            _options_iv_cache[ticker] = get_implied_volatility(ticker)
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 502
+
+    return jsonify(_options_iv_cache[ticker])
 
 
 @app.get("/api/news")

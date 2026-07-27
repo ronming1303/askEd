@@ -601,6 +601,57 @@ main {
 }
 .pm-row-resolved { opacity: 0.5; }
 
+.iv-panel {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #e8eaf2;
+}
+.iv-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+}
+.iv-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1c1e2a;
+}
+.iv-label::before {
+  content: "▸";
+  display: inline-block;
+  margin-right: 6px;
+  font-size: 10px;
+  color: #8a92aa;
+  transition: transform 0.15s;
+}
+.iv-panel.expanded .iv-label::before {
+  transform: rotate(90deg);
+}
+.iv-date {
+  font-size: 12px;
+  font-weight: 600;
+  color: #3a4055;
+}
+.iv-extra {
+  display: none;
+  margin-top: 10px;
+}
+.iv-panel.expanded .iv-extra {
+  display: block;
+}
+.iv-smile-label {
+  font-size: 10px;
+  color: #a0a8bc;
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+.iv-smile-chart {
+  width: 100%;
+  display: block;
+}
+
 @media (max-width: 1000px) {
   .pane-layout {
     flex-direction: column;
