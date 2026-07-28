@@ -719,6 +719,109 @@ def _summarize_atm_update(rows: list[dict]) -> str | None:
     return f"ATM sales this period: {'; '.join(parts)}. ${total_available:,.0f}M still available across programs."
 
 
+_NO_ATM_ACTIVITY_RE = re.compile(r"did not sell any shares under its at-the-market", re.IGNORECASE)
+_NO_REPURCHASE_ACTIVITY_RE = re.compile(r"did not (?:purchase|repurchase) any shares under its (?:share )?repurchase", re.IGNORECASE)
+
+
+def _parse_btc_updates(html: str) -> list[dict] | None:
+    """Parse a "BTC Updates" 8-K sub-section's table pairs directly from
+    the raw HTML: each reporting sub-period is two small tables back to
+    back — one with that period's BTC bought-or-sold activity, one with
+    the resulting "as of" holdings snapshot. A single 8-K can bundle
+    several sub-periods (e.g. two separate weeks caught up in one filing).
+
+    Unlike the ATM table, this one's plain-text flattening (section.text())
+    usually survives intact when there's real buy/sell activity to report
+    — the actual failure mode here isn't garbled numbers, it's that asking
+    an LLM to compress a long, multi-topic Item 8.01 (ATM + repurchase +
+    BTC all bundled together) into one short headline means it has to drop
+    something, and it dropped the most newsworthy part (BTC bought or
+    sold) in favor of the routine ATM/repurchase boilerplate. Parsing this
+    table directly sidesteps that by not needing the LLM to choose at all.
+
+    Returns newest-period-last, or None if no BTC Updates table is found.
+    """
+    start = html.find("BTC Updates")
+    if start == -1:
+        return None
+    next_item = re.search(r"Item\s+\d+\.\d+", html[start:])
+    end = start + (next_item.start() if next_item else 20000)
+
+    try:
+        tables = pd.read_html(StringIO(html[start:end]))
+    except (ValueError, ImportError):
+        return None
+
+    def _row_dict(df, header_row: int, value_row: int) -> dict:
+        headers = [str(v).strip() for v in df.iloc[header_row] if pd.notna(v)]
+        values = [str(v).strip() for v in df.iloc[value_row] if pd.notna(v)]
+        out: dict = {}
+        for h, v in zip(headers, values):
+            out.setdefault(h, re.sub(r"\(\d+\)$", "", v))  # strip trailing "(1)"-style footnote markers
+        return out
+
+    periods = []
+    for i in range(0, len(tables) - 1, 2):
+        activity, holdings = tables[i], tables[i + 1]
+        if len(activity) < 4 or len(holdings) < 4:
+            continue  # not the shape expected — skip rather than misread it
+        record = {"period": str(activity.iloc[1, 0]), **_row_dict(activity, 2, 3), **_row_dict(holdings, 2, 3)}
+        periods.append(record)
+    return periods or None
+
+
+def _summarize_mstr_other_events(item_text: str, html: str) -> str | None:
+    """Combined deterministic summary for MicroStrategy/Strategy's
+    recurring Item 8.01 structure — ATM Updates, Repurchase Program
+    Updates, and BTC Updates, each either a "did not sell/purchase"
+    sentence or a results table. Building one summary from all three
+    (rather than three separate per-item calls) matches how the filing
+    itself presents them as one bundled "Other Events" story.
+
+    Returns None if none of the three sub-sections are recognized —
+    callers should fall back to _summarize_with_ollama in that case.
+    """
+    parts = []
+
+    if _NO_ATM_ACTIVITY_RE.search(item_text):
+        parts.append("no ATM sales")
+    else:
+        atm_rows = _parse_atm_update(html)
+        atm_summary = _summarize_atm_update(atm_rows) if atm_rows else None
+        if atm_summary:
+            parts.append(atm_summary.rstrip("."))
+
+    if _NO_REPURCHASE_ACTIVITY_RE.search(item_text):
+        parts.append("no share repurchases")
+    # A populated repurchase-activity table hasn't been seen in the wild
+    # yet to confirm its shape, so that case isn't parsed — it'll just
+    # silently fall through to nothing here (not a wrong answer, just no
+    # extra detail), same as any other sub-section this doesn't recognize.
+
+    btc_periods = _parse_btc_updates(html)
+    if btc_periods:
+        latest = btc_periods[-1]
+        sold_key = next((k for k in latest if k.startswith("BTC Sold")), None)
+        bought_key = next((k for k in latest if k.startswith("BTC Purchased")), None)
+        holdings_key = next((k for k in latest if k.startswith("Aggregate BTC Holdings")), None)
+        if sold_key:
+            parts.append(f"sold {latest[sold_key]} BTC")
+        elif bought_key:
+            parts.append(f"bought {latest[bought_key]} BTC")
+        if holdings_key:
+            # Unlike the BTC-sold/bought figure, the source HTML doesn't
+            # comma-format this one — add it for readability.
+            try:
+                holdings_str = f"{int(latest[holdings_key].replace(',', '')):,}"
+            except ValueError:
+                holdings_str = latest[holdings_key]
+            parts.append(f"holdings now {holdings_str} BTC")
+
+    if not parts:
+        return None
+    return "; ".join(parts) + "."
+
+
 def _summarize_with_ollama(text: str) -> str | None:
     """One-line plain-English headline for an 8-K/6-K disclosure's body text,
     via a local Ollama model. Best-effort: the SEC item code + official
@@ -958,18 +1061,21 @@ def fetch_filing_detail(accession_number: str) -> dict:
             section = sections.get(key)
             source_text = section.text()[:3000] if section is not None else fallback_text
 
-            # ATM Update tables get parsed deterministically straight from
-            # the HTML instead of summarized by the LLM off a lossy
-            # plain-text flattening — see _parse_atm_update's docstring for
-            # why (it fabricated a wrong "sells more preferred stock" for
-            # an all-zero period, from a table that lost its numbers).
-            if source_text and "ATM Update" in source_text:
+            # MicroStrategy/Strategy's recurring ATM/Repurchase/BTC updates
+            # get parsed deterministically straight from the HTML instead
+            # of summarized by the LLM off a lossy plain-text flattening
+            # (ATM's table can lose its "-" placeholders entirely — see
+            # _parse_atm_update's docstring) or off an LLM that has to drop
+            # something when asked to compress all three bundled sub-topics
+            # into one short headline (it dropped BTC sales in favor of
+            # routine ATM/repurchase boilerplate — see
+            # _summarize_mstr_other_events's docstring).
+            if source_text and any(s in source_text for s in ("ATM Update", "BTC Update", "Repurchase Program Update")):
                 if filing_html is None:
                     filing_html = filing.html() or ""
-                atm_rows = _parse_atm_update(filing_html)
-                atm_summary = _summarize_atm_update(atm_rows) if atm_rows else None
-                if atm_summary:
-                    entry["ai_summary"] = atm_summary
+                other_events_summary = _summarize_mstr_other_events(source_text, filing_html)
+                if other_events_summary:
+                    entry["ai_summary"] = other_events_summary
                     continue
 
             entry["ai_summary"] = _summarize_with_ollama(source_text) if source_text else None
