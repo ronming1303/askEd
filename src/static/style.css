@@ -116,7 +116,7 @@ h1 {
 main {
   padding: 28px 28px 60px;
   position: relative;
-  max-width: 1440px;
+  max-width: 1720px;
 }
 
 .company-info {
@@ -239,6 +239,7 @@ main {
 .price-panel {
   flex: 1 1 360px;
   min-width: 280px;
+  max-width: 560px;
   position: sticky;
   top: 20px;
   padding: 18px 22px;
