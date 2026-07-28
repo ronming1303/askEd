@@ -12,6 +12,7 @@ import os
 import re
 import sys
 from datetime import datetime, timedelta
+from io import StringIO
 
 import pandas as pd
 import requests
@@ -618,6 +619,106 @@ def _find_related_filing(company, detail: dict) -> dict | None:
     return None
 
 
+def _parse_atm_update(html: str) -> list[dict] | None:
+    """Parse MicroStrategy-style "ATM Update" 8-K tables directly from the
+    raw HTML table, rather than the flattened plain-text version fed to
+    _summarize_with_ollama for everything else.
+
+    Why this exists: edgartools' section.text() silently drops the "-"
+    placeholders SEC filers use for "zero this period" when flattening
+    this specific table's HTML, leaving a numberless, garbled table. Fed
+    that to the LLM, it confidently invented an "again sells preferred
+    stock" summary for a period where every preferred-stock ATM program
+    had *zero* activity — the only real sale that period was of MSTR
+    common stock, a completely different line of the same table. This
+    table recurs across dozens of MicroStrategy/Strategy 8-Ks (they file
+    an ATM update almost weekly), so it's worth parsing properly instead
+    of re-hitting this failure mode every time.
+
+    Returns one dict per security row (column header -> cell value,
+    values as the original strings, "-" included) or None if no "ATM
+    Update" table is found or it doesn't parse the way expected — callers
+    should fall back to _summarize_with_ollama in that case.
+    """
+    start = html.find("ATM Update")
+    if start == -1:
+        return None
+    end = html.find("</table>", start)
+    if end == -1:
+        return None
+
+    try:
+        tables = pd.read_html(StringIO(html[start:end + len("</table>")]))
+    except (ValueError, ImportError):
+        return None
+    if not tables:
+        return None
+    table = tables[0]
+
+    def _tokens(row) -> list[str]:
+        # Currency cells are split across two adjacent table cells in the
+        # source HTML ("$" in one, the number in the next) — drop the "$"
+        # markers so a row's remaining tokens line up positionally with
+        # the header row's column labels.
+        return [v for v in (str(c).strip() for c in row if pd.notna(c)) if v != "$"]
+
+    def _dedup_consecutive(tokens: list[str]) -> list[str]:
+        # Each merged/colspan header cell (e.g. "Shares Sold(1)" spanning
+        # its label+value sub-columns) comes back from pandas.read_html as
+        # the *same* label repeated once per sub-column — collapse those
+        # runs so the header's token count matches a data row's (one real
+        # value per metric, not two).
+        out: list[str] = []
+        for t in tokens:
+            if not out or out[-1] != t:
+                out.append(t)
+        return out
+
+    header = next(
+        (_dedup_consecutive(_tokens(r)) for _, r in table.iterrows() if _tokens(r)[:1] == ["Security"]),
+        None,
+    )
+    if not header:
+        return None
+
+    rows = []
+    for _, r in table.iterrows():
+        vals = _tokens(r)
+        if len(vals) != len(header) or vals[0] in ("Security", "Total"):
+            continue
+        rows.append(dict(zip(header, vals)))
+    return rows or None
+
+
+def _summarize_atm_update(rows: list[dict]) -> str | None:
+    """Deterministic summary of a parsed ATM Update table — no LLM involved,
+    since every figure here comes straight from the filing's own numbers.
+    """
+    headers = list(rows[0].keys())
+    security_col = headers[0]
+    shares_col = next((h for h in headers if "shares sold" in h.lower()), None)
+    proceeds_col = next((h for h in headers if "net proceeds" in h.lower()), None)
+    available_col = next((h for h in headers if "available" in h.lower()), None)
+    if not (shares_col and proceeds_col and available_col):
+        return None
+
+    def _num(s: str) -> float:
+        s = s.replace(",", "").strip()
+        return 0.0 if s in ("-", "") else float(s)
+
+    sold = [r for r in rows if _num(r[proceeds_col]) > 0]
+    total_available = sum(_num(r[available_col]) for r in rows)
+
+    if not sold:
+        return f"No shares sold under any ATM program this period (${total_available:,.0f}M still available)."
+
+    parts = [
+        f"{r[security_col].replace(' Stock', '')} +{_num(r[shares_col]):,.0f} sh (${_num(r[proceeds_col]):,.1f}M net)"
+        for r in sold
+    ]
+    return f"ATM sales this period: {'; '.join(parts)}. ${total_available:,.0f}M still available across programs."
+
+
 def _summarize_with_ollama(text: str) -> str | None:
     """One-line plain-English headline for an 8-K/6-K disclosure's body text,
     via a local Ollama model. Best-effort: the SEC item code + official
@@ -851,10 +952,26 @@ def fetch_filing_detail(accession_number: str) -> dict:
         # one combined headline just drops whichever item comes second.
         sections = getattr(obj, "sections", None) or {}
         fallback_text = detail["press_releases"][0]["excerpt"] if detail["press_releases"] else None
+        filing_html = None  # fetched lazily, only if an ATM Update table is spotted
         for entry in detail["items"]:
             key = "item_" + entry["code"].replace("Item ", "").replace(".", "")
             section = sections.get(key)
             source_text = section.text()[:3000] if section is not None else fallback_text
+
+            # ATM Update tables get parsed deterministically straight from
+            # the HTML instead of summarized by the LLM off a lossy
+            # plain-text flattening — see _parse_atm_update's docstring for
+            # why (it fabricated a wrong "sells more preferred stock" for
+            # an all-zero period, from a table that lost its numbers).
+            if source_text and "ATM Update" in source_text:
+                if filing_html is None:
+                    filing_html = filing.html() or ""
+                atm_rows = _parse_atm_update(filing_html)
+                atm_summary = _summarize_atm_update(atm_rows) if atm_rows else None
+                if atm_summary:
+                    entry["ai_summary"] = atm_summary
+                    continue
+
             entry["ai_summary"] = _summarize_with_ollama(source_text) if source_text else None
 
     else:
