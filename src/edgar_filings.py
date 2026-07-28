@@ -823,14 +823,32 @@ def _summarize_mstr_other_events(item_text: str, html: str) -> str | None:
 
 
 def _summarize_with_ollama(text: str) -> str | None:
-    """One-line plain-English headline for an 8-K/6-K disclosure's body text,
-    via a local Ollama model. Best-effort: the SEC item code + official
+    """Plain-English summary of an 8-K/6-K disclosure's body text, via a
+    local Ollama model. Best-effort: the SEC item code + official
     description are already shown regardless, so any failure here (Ollama
     not running, model not pulled, timeout) just means no extra summary.
+
+    Deliberately not capped at one short headline: a single Item 8.01
+    often bundles several unrelated sub-topics, and asking for one short
+    headline made the model pick just one and silently drop the rest.
+    Allowing 1-2 full sentences and explicitly asking it to cover each
+    sub-topic makes it reliably surface every topic instead of gambling
+    on picking one. The explicit "don't invent a number" guard exists
+    because without it, asking for "concrete figures" on a section that
+    genuinely has none (e.g. routine boilerplate) made the model
+    fabricate plausible-sounding but entirely made-up figures instead of
+    just saying there weren't any.
     """
     prompt = (
-        "Summarize this SEC 8-K/6-K disclosure in one short plain-English "
-        "headline (under 15 words). No preamble, no quotes, just the headline.\n\n"
+        "Summarize this SEC 8-K/6-K disclosure in 1-2 plain-English "
+        "sentences of flowing prose. If it covers multiple distinct "
+        "sub-topics (e.g. separate updates on share sales, repurchases, "
+        "and asset holdings), briefly note each one. Only use figures "
+        "that literally appear in the text below — never estimate, "
+        "infer, round, or invent a number; if the text has no concrete "
+        "figures, say so in general terms instead of making one up. "
+        "Write it as plain sentences only — no headers, no bullet "
+        "points, no line breaks, no preamble, no quotes.\n\n"
         f"{text}"
     )
     try:
@@ -1063,13 +1081,17 @@ def fetch_filing_detail(accession_number: str) -> dict:
 
             # MicroStrategy/Strategy's recurring ATM/Repurchase/BTC updates
             # get parsed deterministically straight from the HTML instead
-            # of summarized by the LLM off a lossy plain-text flattening
-            # (ATM's table can lose its "-" placeholders entirely — see
-            # _parse_atm_update's docstring) or off an LLM that has to drop
-            # something when asked to compress all three bundled sub-topics
-            # into one short headline (it dropped BTC sales in favor of
-            # routine ATM/repurchase boilerplate — see
-            # _summarize_mstr_other_events's docstring).
+            # of summarized by the LLM. Even a clean markdown rendering of
+            # these specific tables (see the markdown_text branch below)
+            # still gets misread by the LLM in reproducible ways —
+            # edgartools' markdown renderer loses/misplaces the header
+            # labels on this table shape's merged header cells, so a
+            # share count reads as a dollar figure, an "as of" holdings
+            # snapshot reads as a new purchase, and a $-in-billions column
+            # reads as $-in-millions. That's a rendering defect in this
+            # specific compound table shape, not something prompting can
+            # fix, so these three sub-topics keep a dedicated parser
+            # rather than trusting the LLM with their numbers.
             if source_text and any(s in source_text for s in ("ATM Update", "BTC Update", "Repurchase Program Update")):
                 if filing_html is None:
                     filing_html = filing.html() or ""
@@ -1078,7 +1100,21 @@ def fetch_filing_detail(accession_number: str) -> dict:
                     entry["ai_summary"] = other_events_summary
                     continue
 
-            entry["ai_summary"] = _summarize_with_ollama(source_text) if source_text else None
+            # Everything else: hand the LLM a markdown rendering of the
+            # section (tables in pipe format) instead of the plain-text
+            # flattening, which silently drops "-" zero-placeholders and
+            # loses column alignment. Markdown isn't a perfect rendering
+            # of every table shape either, but for the tables outside the
+            # three MSTR-specific ones above it's held up well in testing
+            # (verified against Apple's CEO-transition 8-K, among others).
+            if section is not None:
+                try:
+                    markdown_text = section.markdown()[:4000]
+                except Exception:
+                    markdown_text = source_text
+            else:
+                markdown_text = source_text
+            entry["ai_summary"] = _summarize_with_ollama(markdown_text) if markdown_text else None
 
     else:
         detail["kind"] = "generic"
