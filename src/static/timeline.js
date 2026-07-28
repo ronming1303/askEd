@@ -1775,18 +1775,40 @@ function renderImpliedVolatilityPanel(tab, iv) {
     return;
   }
 
-  chainLabel.textContent = `Option chain (Nasdaq), ${iv.chain_expiration || "nearest"} expiration — bid×ask · vol/OI`;
+  chainLabel.textContent = `Option chain (Nasdaq), ${iv.chain_expiration || "nearest"} expiration`;
 
   const fmtCount = (n) => n == null ? "–" : (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : `${Math.round(n)}`);
   const fmtBidAsk = (bid, ask) => `${bid != null ? bid.toFixed(2) : "–"}×${ask != null ? ask.toFixed(2) : "–"}`;
 
-  chainRows.innerHTML = chain.map(r => `
-    <div class="chain-row">
-      <div class="chain-strike">$${r.strike.toLocaleString()}</div>
-      <div class="chain-side"><span class="chain-tag chain-tag-call">C</span>${fmtBidAsk(r.call_bid, r.call_ask)} <span class="chain-meta">${fmtCount(r.call_volume)}/${fmtCount(r.call_oi)}</span></div>
-      <div class="chain-side"><span class="chain-tag chain-tag-put">P</span>${fmtBidAsk(r.put_bid, r.put_ask)} <span class="chain-meta">${fmtCount(r.put_volume)}/${fmtCount(r.put_oi)}</span></div>
-    </div>
+  // Calls on the left, strike in the middle, puts on the right — one row
+  // per strike, mirroring how a real options chain is conventionally laid
+  // out (rather than stacking call/put/strike as 3 separate lines, which
+  // used the panel's width poorly).
+  const chainRowsHtml = chain.map(r => `
+    <tr>
+      <td class="chain-vo">${fmtCount(r.call_volume)}/${fmtCount(r.call_oi)}</td>
+      <td class="chain-ba chain-ba-call">${fmtBidAsk(r.call_bid, r.call_ask)}</td>
+      <td class="chain-strike">$${r.strike.toLocaleString()}</td>
+      <td class="chain-ba chain-ba-put">${fmtBidAsk(r.put_bid, r.put_ask)}</td>
+      <td class="chain-vo">${fmtCount(r.put_volume)}/${fmtCount(r.put_oi)}</td>
+    </tr>
   `).join("");
+
+  chainRows.innerHTML = `
+    <table class="chain-table">
+      <thead>
+        <tr>
+          <th colspan="2" class="chain-th-call">Calls</th>
+          <th></th>
+          <th colspan="2" class="chain-th-put">Puts</th>
+        </tr>
+        <tr>
+          <th>Vol/OI</th><th>Bid×Ask</th><th>Strike</th><th>Bid×Ask</th><th>Vol/OI</th>
+        </tr>
+      </thead>
+      <tbody>${chainRowsHtml}</tbody>
+    </table>
+  `;
 }
 
 function renderIvSmile(svg, label, iv, smile) {

@@ -659,39 +659,44 @@ main {
 }
 .chain-rows {
   max-height: 240px;
-  overflow-y: auto;
+  overflow: auto;
 }
-.chain-row {
-  padding: 6px 0;
+.chain-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+.chain-table th, .chain-table td {
+  padding: 3px 1px;
+  text-align: center;
+  white-space: nowrap;
+}
+.chain-table thead tr:first-child th {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  padding-bottom: 1px;
+}
+.chain-th-call { color: #3b6ef0; }
+.chain-th-put { color: #f76707; }
+.chain-table thead tr:last-child th {
+  color: #a0a8bc;
+  font-weight: 600;
+  border-bottom: 1px solid #e8eaf2;
+}
+.chain-table td {
+  color: #6a7188;
   border-bottom: 1px solid #f0f1f6;
-  font-size: 11px;
-  line-height: 1.6;
 }
-.chain-row:last-child { border-bottom: none; }
+.chain-table tr:last-child td { border-bottom: none; }
 .chain-strike {
   font-weight: 600;
   color: #3a4055;
-  margin-bottom: 1px;
 }
-.chain-side {
-  color: #6a7188;
-  padding-left: 2px;
-}
-.chain-tag {
-  display: inline-block;
-  width: 12px;
-  font-weight: 700;
-  text-align: center;
-  border-radius: 2px;
-  margin-right: 3px;
-  font-size: 9px;
-}
-.chain-tag-call { background: #e7edfd; color: #3b6ef0; }
-.chain-tag-put { background: #fdece0; color: #f76707; }
-.chain-meta {
-  color: #a0a8bc;
-  margin-left: 4px;
-}
+.chain-ba-call { color: #3b6ef0; }
+.chain-ba-put { color: #f76707; }
 
 @media (max-width: 1000px) {
   .pane-layout {
